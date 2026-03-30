@@ -1,71 +1,77 @@
 /**
  * ============================================================
  * Design System - Dream Team Mobile
- * Palette premium, typographie, espacements et ombres
+ * Palette harmonisée : Bleu Océan + Or Cuivré + Émeraude
+ * Cohérent avec le frontend web
  * ============================================================
  */
 
 /** Palette de couleurs principale */
 export const COLORS = {
-  // Couleurs principales - Dégradé violet/indigo signature
-  primary: '#667eea',
-  primaryDark: '#5a67d8',
-  primaryDeep: '#764ba2',
-  primaryLight: '#a78bfa',
-  primarySoft: '#ede9fe',
+  // Couleurs principales - Bleu Océan
+  primary: '#1E3A5F',
+  primaryDark: '#152C49',
+  primaryDeep: '#0F1E33',
+  primaryLight: '#2A5080',
+  primarySoft: '#E8EDF5',
 
   // Accent doré pour les éléments premium
-  accent: '#f59e0b',
-  accentLight: '#fbbf24',
-  accentSoft: '#fef3c7',
+  accent: '#C8A45D',
+  accentLight: '#E8D9B0',
+  accentSoft: '#FBF5E8',
+  accentDark: '#B8943D',
+
+  // Émeraude - Succès et actions positives
+  success: '#2D9D78',
+  successLight: '#D0F0E4',
+  successDark: '#1E7A5A',
 
   // États
-  success: '#10b981',
-  successLight: '#d1fae5',
-  warning: '#f59e0b',
-  warningLight: '#fef3c7',
-  danger: '#ef4444',
-  dangerLight: '#fee2e2',
-  info: '#3b82f6',
-  infoLight: '#dbeafe',
+  warning: '#E8A643',
+  warningLight: '#FEF3D7',
+  danger: '#E85D5D',
+  dangerLight: '#FDE8E8',
+  info: '#3B82F6',
+  infoLight: '#DBEAFE',
 
   // Neutres
-  white: '#ffffff',
-  black: '#0f172a',
-  gray50: '#f8fafc',
-  gray100: '#f1f5f9',
-  gray200: '#e2e8f0',
-  gray300: '#cbd5e1',
-  gray400: '#94a3b8',
-  gray500: '#64748b',
-  gray600: '#475569',
+  white: '#FFFFFF',
+  black: '#1A1D2E',
+  gray50: '#F7F8FC',
+  gray100: '#F1F3F9',
+  gray200: '#E2E6EF',
+  gray300: '#CBD2DE',
+  gray400: '#9BA8C2',
+  gray500: '#6B7A99',
+  gray600: '#4A5568',
   gray700: '#334155',
-  gray800: '#1e293b',
-  gray900: '#0f172a',
+  gray800: '#1E293B',
+  gray900: '#0F172A',
 
   // Fond d'écran
-  background: '#f0f2f8',
-  surface: '#ffffff',
-  surfaceElevated: '#ffffff',
+  background: '#F7F8FC',
+  surface: '#FFFFFF',
+  surfaceElevated: '#FFFFFF',
 
   // Couleurs spécifiques Mobile Money
-  orangeMoney: '#ff6600',
-  mtnMomo: '#ffcc00',
-  mtnMomoText: '#003d7c',
+  orangeMoney: '#FF6600',
+  mtnMomo: '#FFCC00',
+  mtnMomoText: '#003D7C',
 
   // Gradients (pour expo-linear-gradient)
-  primaryGradient: ['#667eea', '#764ba2'] as const,
-  successGradient: ['#10b981', '#059669'] as const,
-  warningGradient: ['#f59e0b', '#d97706'] as const,
-  dangerGradient: ['#ef4444', '#dc2626'] as const,
-  darkGradient: ['#1e293b', '#0f172a'] as const,
-  goldGradient: ['#f59e0b', '#d97706'] as const,
-  sunsetGradient: ['#f97316', '#ef4444'] as const,
+  primaryGradient: ['#1E3A5F', '#0F1E33'] as const,
+  accentGradient: ['#C8A45D', '#B8943D'] as const,
+  successGradient: ['#2D9D78', '#1E7A5A'] as const,
+  warningGradient: ['#E8A643', '#D09535'] as const,
+  dangerGradient: ['#E85D5D', '#D04444'] as const,
+  darkGradient: ['#1E293B', '#0F172A'] as const,
+  goldGradient: ['#C8A45D', '#B8943D'] as const,
 
   // Opacités utilitaires
-  blackAlpha: (o: number) => `rgba(15, 23, 42, ${o})`,
+  blackAlpha: (o: number) => `rgba(26, 29, 46, ${o})`,
   whiteAlpha: (o: number) => `rgba(255, 255, 255, ${o})`,
-  primaryAlpha: (o: number) => `rgba(102, 126, 234, ${o})`,
+  primaryAlpha: (o: number) => `rgba(30, 58, 95, ${o})`,
+  accentAlpha: (o: number) => `rgba(200, 164, 93, ${o})`,
 };
 
 /** Espacements cohérents (multiples de 4) */
@@ -112,7 +118,7 @@ export const FONT_WEIGHT = {
   extrabold: '800' as const,
 };
 
-/** Ombres portées pour différents niveaux d'élévation */
+/** Ombres portées */
 export const SHADOWS = {
   none: {
     shadowColor: 'transparent',
@@ -122,7 +128,7 @@ export const SHADOWS = {
     elevation: 0,
   },
   soft: {
-    shadowColor: '#667eea',
+    shadowColor: '#1E3A5F',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
@@ -131,34 +137,34 @@ export const SHADOWS = {
   light: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 3,
   },
   medium: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 5,
   },
   heavy: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 24,
     elevation: 8,
   },
   glow: {
-    shadowColor: '#667eea',
+    shadowColor: '#C8A45D',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 16,
     elevation: 6,
   },
 };
 
-/** Durées d'animation en millisecondes */
+/** Durées d'animation */
 export const ANIMATION = {
   fast: 150,
   normal: 300,

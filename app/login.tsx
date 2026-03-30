@@ -1,250 +1,172 @@
-/**
- * ============================================================
- * Écran de Connexion - Dream Team Mobile
- * Design premium avec animation d'entrée, dégradé de fond,
- * et intégration complète avec le backend (Login API)
- * ============================================================
- */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
+  Text,
   TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
+  ActivityIndicator,
   Alert,
   Dimensions,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withDelay,
-  withTiming,
-  FadeIn,
-  SlideInUp,
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import Animated, { 
+  FadeInUp, 
+  FadeInDown, 
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react-native';
-import { login as loginApi } from '../src/api/auth';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, SHADOWS, RADIUS, FONT_SIZE, FONT_WEIGHT, SPACING } from '../src/theme/theme';
 import { useAuthStore } from '../src/store/useAuthStore';
-import GradientButton from '../src/components/common/GradientButton';
-import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../src/theme/theme';
+import { login } from '../src/api/auth';
 
 const { width, height } = Dimensions.get('window');
 
 export default function LoginScreen() {
   const router = useRouter();
-  const loginStore = useAuthStore((s) => s.login);
-
-  // État du formulaire
+  const setLoginStore = useAuthStore((state) => state.login);
+  
   const [emailOrPhone, setEmailOrPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  // Animations d'entrée
-  const formOpacity = useSharedValue(0);
-  const formTranslateY = useSharedValue(40);
-
-  useEffect(() => {
-    formOpacity.value = withDelay(200, withTiming(1, { duration: 600 }));
-    formTranslateY.value = withDelay(
-      200,
-      withSpring(0, { damping: 18, stiffness: 100 })
-    );
-  }, []);
-
-  const formAnimStyle = useAnimatedStyle(() => ({
-    opacity: formOpacity.value,
-    transform: [{ translateY: formTranslateY.value }],
-  }));
-
-  /**
-   * Valide les champs du formulaire
-   */
-  const validate = (): boolean => {
-    const newErrors: { email?: string; password?: string } = {};
-
-    if (!emailOrPhone.trim()) {
-      newErrors.email = 'Email ou téléphone requis';
-    }
-    if (!password.trim()) {
-      newErrors.password = 'Mot de passe requis';
-    } else if (password.length < 6) {
-      newErrors.password = 'Minimum 6 caractères';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  /**
-   * Soumet la connexion au backend
-   */
   const handleLogin = async () => {
-    if (!validate()) return;
+    if (!emailOrPhone || !password) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      return;
+    }
 
-    setLoading(true);
+    setIsLoading(true);
     try {
-      const response = await loginApi({
-        emailOrPhone: emailOrPhone.trim(),
-        password,
-      });
-
+      const response = await login({ emailOrPhone, password });
+      
       if (response.success && response.data) {
-        const { accessToken, refreshToken, user } = response.data;
-        // Stocker l'utilisateur et les tokens dans le store
-        loginStore(user, accessToken, refreshToken);
+        await setLoginStore(response.data);
         router.replace('/(tabs)');
       } else {
-        Alert.alert('Erreur', response.message || 'Identifiants incorrects');
+        Alert.alert('Échec', response.message || 'Identifiants incorrects');
       }
     } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        'Impossible de se connecter. Vérifiez vos identifiants.';
-      Alert.alert('Erreur de connexion', message);
+      console.error(error);
+      Alert.alert('Erreur', 'Problème de connexion au serveur');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
     <View style={styles.container}>
-      {/* En-tête avec dégradé */}
-      <LinearGradient
-        colors={COLORS.primaryGradient as unknown as [string, string, ...string[]]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.header}
-      >
-        {/* Cercles décoratifs */}
-        <View style={[styles.circle, styles.circle1]} />
-        <View style={[styles.circle, styles.circle2]} />
-        <View style={[styles.circle, styles.circle3]} />
+      <StatusBar style="light" />
+      
+      <View style={styles.bgContainer}>
+        <LinearGradient
+          colors={[COLORS.primaryDeep, COLORS.primary]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.circle, { top: -50, right: -50, backgroundColor: COLORS.accentAlpha(0.1) }]} />
+        <View style={[styles.circle, { bottom: height * 0.3, left: -100, width: 300, height: 300, backgroundColor: COLORS.whiteAlpha(0.05) }]} />
+      </View>
 
-        {/* Logo et texte d'accueil */}
-        <Animated.View
-          entering={FadeIn.delay(100).duration(600)}
-          style={styles.headerContent}
-        >
-          <View style={styles.logoWrapper}>
-            <Image
-              source={require('../assets/images/logo_dream_team.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-          </View>
-          <Text style={styles.welcomeText}>Bienvenue</Text>
-          <Text style={styles.welcomeSubtext}>
-            Connectez-vous pour accéder à votre espace
-          </Text>
-        </Animated.View>
-      </LinearGradient>
-
-      {/* Formulaire de connexion */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.formWrapper}
+        style={{ flex: 1 }}
       >
-        <ScrollView
-          showsVerticalScrollIndicator={false}
+        <ScrollView 
           contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <Animated.View style={[styles.form, formAnimStyle]}>
-            <Text style={styles.formTitle}>Connexion</Text>
-
-            {/* Champ Email / Téléphone */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email ou Téléphone</Text>
-              <View
-                style={[
-                  styles.inputContainer,
-                  errors.email ? styles.inputError : null,
-                ]}
+          <Animated.View 
+            entering={FadeInDown.delay(200).duration(800)}
+            style={styles.header}
+          >
+            <View style={styles.logoContainer}>
+              <LinearGradient
+                colors={COLORS.accentGradient as any}
+                style={styles.logoGradient}
               >
-                <Mail size={20} color={COLORS.gray400} style={styles.inputIcon} />
+                <Ionicons name="star" size={32} color={COLORS.white} />
+              </LinearGradient>
+            </View>
+            <Text style={styles.title}>DREAM TEAM</Text>
+            <Text style={styles.subtitle}>Finance Solidaire & Moderne</Text>
+          </Animated.View>
+
+          <Animated.View 
+            entering={FadeInUp.delay(400).duration(800)}
+            style={styles.formContainer}
+          >
+            <Text style={styles.formTitle}>Connexion</Text>
+            
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>EMAIL OU TÉLÉPHONE</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="person-outline" size={20} color={COLORS.gray400} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="exemple@email.com"
+                  placeholder="votre@email.com"
                   placeholderTextColor={COLORS.gray400}
                   value={emailOrPhone}
-                  onChangeText={(t) => {
-                    setEmailOrPhone(t);
-                    if (errors.email) setErrors((e) => ({ ...e, email: undefined }));
-                  }}
-                  keyboardType="email-address"
+                  onChangeText={setEmailOrPhone}
                   autoCapitalize="none"
-                  autoComplete="email"
                 />
               </View>
-              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
             </View>
 
-            {/* Champ Mot de passe */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Mot de passe</Text>
-              <View
-                style={[
-                  styles.inputContainer,
-                  errors.password ? styles.inputError : null,
-                ]}
-              >
-                <Lock size={20} color={COLORS.gray400} style={styles.inputIcon} />
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>MOT DE PASSE</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed-outline" size={20} color={COLORS.gray400} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="••••••••"
                   placeholderTextColor={COLORS.gray400}
                   value={password}
-                  onChangeText={(t) => {
-                    setPassword(t);
-                    if (errors.password) setErrors((e) => ({ ...e, password: undefined }));
-                  }}
+                  onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  autoComplete="password"
                 />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeButton}
-                >
-                  {showPassword ? (
-                    <EyeOff size={20} color={COLORS.gray400} />
-                  ) : (
-                    <Eye size={20} color={COLORS.gray400} />
-                  )}
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Ionicons 
+                    name={showPassword ? "eye-off-outline" : "eye-outline"} 
+                    size={20} 
+                    color={COLORS.gray400} 
+                  />
                 </TouchableOpacity>
               </View>
-              {errors.password && (
-                <Text style={styles.errorText}>{errors.password}</Text>
+            </View>
+
+            <TouchableOpacity style={styles.forgotPassword}>
+              <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.loginButton, isLoading && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <>
+                  <Text style={styles.loginButtonText}>Se connecter</Text>
+                  <Ionicons name="arrow-forward" size={20} color={COLORS.white} />
+                </>
               )}
-            </View>
+            </TouchableOpacity>
+          </Animated.View>
 
-            {/* Bouton de connexion */}
-            <View style={styles.buttonContainer}>
-              <GradientButton
-                title="Se connecter"
-                onPress={handleLogin}
-                loading={loading}
-                icon={<ArrowRight size={20} color={COLORS.white} />}
-                size="lg"
-              />
-            </View>
-
-            {/* Lien vers inscription */}
-            <View style={styles.registerLink}>
-              <Text style={styles.registerText}>Pas encore de compte ?</Text>
-              <TouchableOpacity onPress={() => router.push('/register')}>
-                <Text style={styles.registerButton}> S'inscrire</Text>
-              </TouchableOpacity>
-            </View>
+          <Animated.View 
+            entering={FadeInUp.delay(600).duration(800)}
+            style={styles.footer}
+          >
+            <Text style={styles.footerText}>Pas encore de compte ?</Text>
+            <TouchableOpacity onPress={() => router.push('/register')}>
+              <Text style={styles.registerText}> Rejoignez l'association</Text>
+            </TouchableOpacity>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -255,152 +177,134 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.primaryDeep,
   },
-  // Header dégradé
-  header: {
-    height: height * 0.38,
-    justifyContent: 'flex-end',
-    paddingBottom: SPACING.xxl,
-    paddingHorizontal: SPACING.xl,
+  bgContainer: {
+    ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
   },
-  headerContent: {
-    alignItems: 'center',
-    zIndex: 2,
-  },
-  // Cercles décoratifs
   circle: {
     position: 'absolute',
-    borderRadius: 9999,
-    backgroundColor: COLORS.whiteAlpha(0.08),
-  },
-  circle1: {
     width: 200,
     height: 200,
-    top: -40,
-    right: -60,
-  },
-  circle2: {
-    width: 150,
-    height: 150,
-    bottom: 20,
-    left: -50,
-  },
-  circle3: {
-    width: 80,
-    height: 80,
-    top: 60,
-    left: 40,
-  },
-  // Logo
-  logoWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.whiteAlpha(0.2),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-    borderWidth: 2,
-    borderColor: COLORS.whiteAlpha(0.3),
-  },
-  logo: {
-    width: 50,
-    height: 50,
-  },
-  welcomeText: {
-    fontSize: FONT_SIZE.hero,
-    fontWeight: FONT_WEIGHT.extrabold,
-    color: COLORS.white,
-    marginBottom: SPACING.xs,
-  },
-  welcomeSubtext: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.whiteAlpha(0.8),
-    textAlign: 'center',
-  },
-  // Formulaire
-  formWrapper: {
-    flex: 1,
-    marginTop: -SPACING.xl,
+    borderRadius: 100,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: height * 0.08,
+    paddingBottom: SPACING.xl,
   },
-  form: {
+  header: {
+    alignItems: 'center',
+    marginBottom: SPACING.xxl,
+  },
+  logoContainer: {
+    marginBottom: SPACING.md,
+    ...SHADOWS.glow,
+  },
+  logoGradient: {
+    width: 80,
+    height: 80,
+    borderRadius: RADIUS.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: FONT_SIZE.xxxl,
+    fontWeight: FONT_WEIGHT.extrabold,
+    color: COLORS.white,
+    letterSpacing: 1,
+  },
+  subtitle: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginTop: 4,
+  },
+  formContainer: {
     backgroundColor: COLORS.white,
     borderRadius: RADIUS.xxl,
-    padding: SPACING.xl,
+    padding: SPACING.lg,
     ...SHADOWS.heavy,
   },
   formTitle: {
-    fontSize: FONT_SIZE.xxl,
+    fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.black,
+    color: COLORS.primaryDeep,
     marginBottom: SPACING.lg,
   },
-  // Champs
-  inputGroup: {
+  inputWrapper: {
     marginBottom: SPACING.md,
   },
   label: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.semibold,
-    color: COLORS.gray600,
-    marginBottom: SPACING.xs + 2,
-    letterSpacing: 0.3,
+    fontSize: 10,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.gray500,
+    marginBottom: 8,
+    letterSpacing: 1,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.gray50,
     borderRadius: RADIUS.lg,
-    borderWidth: 1.5,
-    borderColor: COLORS.gray200,
+    borderWidth: 1,
+    borderColor: COLORS.gray100,
     paddingHorizontal: SPACING.md,
-    height: 52,
-  },
-  inputError: {
-    borderColor: COLORS.danger,
-    backgroundColor: COLORS.dangerLight,
+    height: 56,
   },
   inputIcon: {
-    marginRight: SPACING.sm,
+    marginRight: 12,
   },
   input: {
     flex: 1,
+    color: COLORS.primaryDeep,
     fontSize: FONT_SIZE.md,
-    color: COLORS.black,
+    fontWeight: FONT_WEIGHT.medium,
   },
-  eyeButton: {
-    padding: SPACING.xs,
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginBottom: SPACING.lg,
   },
-  errorText: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.danger,
-    marginTop: SPACING.xs,
-    marginLeft: SPACING.xs,
+  forgotPasswordText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
   },
-  // Bouton
-  buttonContainer: {
-    marginTop: SPACING.lg,
-  },
-  // Lien inscription
-  registerLink: {
+  loginButton: {
+    backgroundColor: COLORS.primary,
+    height: 56,
+    borderRadius: RADIUS.lg,
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: SPACING.lg,
-    paddingBottom: SPACING.sm,
+    alignItems: 'center',
+    ...SHADOWS.heavy,
   },
-  registerText: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.gray500,
+  buttonDisabled: {
+    opacity: 0.7,
   },
-  registerButton: {
+  loginButtonText: {
+    color: COLORS.white,
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
+    marginRight: 8,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: SPACING.xl,
+  },
+  footerText: {
+    color: COLORS.whiteAlpha(0.6),
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  registerText: {
+    color: COLORS.accent,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
   },
 });

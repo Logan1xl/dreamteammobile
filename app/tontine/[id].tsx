@@ -140,7 +140,7 @@ export default function TontineDetailScreen() {
     <View style={styles.container}>
       {/* Header */}
       <LinearGradient
-        colors={COLORS.successGradient as unknown as [string, string, ...string[]]}
+        colors={COLORS.primaryGradient as any}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.header}
@@ -165,9 +165,9 @@ export default function TontineDetailScreen() {
               </Text>
             </View>
             {tontine.isLocked && (
-              <View style={[styles.headerBadge, { backgroundColor: COLORS.whiteAlpha(0.25) }]}>
-                <Lock size={12} color={COLORS.white} />
-                <Text style={styles.headerBadgeText}> Verrouillée</Text>
+              <View style={[styles.headerBadge, { backgroundColor: COLORS.accentAlpha(0.25) }]}>
+                <Lock size={12} color={COLORS.accent} />
+                <Text style={[styles.headerBadgeText, { color: COLORS.accent }]}> Verrouillée</Text>
               </View>
             )}
           </View>

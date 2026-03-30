@@ -1,19 +1,25 @@
-const tintColorLight = '#2f95dc';
-const tintColorDark = '#fff';
+/**
+ * ============================================================
+ * Constantes Couleurs Expo - Dream Team Mobile
+ * Harmonisé avec le thème principal (src/theme/theme.ts)
+ * ============================================================
+ */
+const tintColorLight = '#1E3A5F';
+const tintColorDark = '#C8A45D';
 
 export default {
   light: {
-    text: '#000',
-    background: '#fff',
+    text: '#1A1D2E',
+    background: '#F7F8FC',
     tint: tintColorLight,
-    tabIconDefault: '#ccc',
+    tabIconDefault: '#9BA8C2',
     tabIconSelected: tintColorLight,
   },
   dark: {
-    text: '#fff',
-    background: '#000',
+    text: '#F7F8FC',
+    background: '#0F1E33',
     tint: tintColorDark,
-    tabIconDefault: '#ccc',
+    tabIconDefault: '#6B7A99',
     tabIconSelected: tintColorDark,
   },
 };

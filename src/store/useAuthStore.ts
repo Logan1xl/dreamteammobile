@@ -8,12 +8,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import * as SecureStore from 'expo-secure-store';
-import { UserResponse, Role } from '../types';
+import { UserResponse, AuthResponse } from '../types';
 
 /**
  * Adaptateur de stockage sécurisé pour Zustand
- * Utilise Expo SecureStore pour chiffrer les données sensibles
- * (tokens JWT notamment) sur l'appareil
  */
 const secureStorage = {
   getItem: (name: string): string | null | Promise<string | null> => {
@@ -29,7 +27,6 @@ const secureStorage = {
 
 /** Interface de l'état d'authentification */
 interface AuthState {
-  // Données
   user: UserResponse | null;
   accessToken: string | null;
   refreshToken: string | null;
@@ -37,7 +34,7 @@ interface AuthState {
   isLoading: boolean;
 
   // Actions
-  login: (user: UserResponse, accessToken: string, refreshToken: string) => void;
+  login: (authData: AuthResponse | UserResponse, accessToken?: string, refreshToken?: string) => void;
   logout: () => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
   updateUser: (user: Partial<UserResponse>) => void;
@@ -51,12 +48,10 @@ interface AuthState {
 
 /**
  * Store Zustand persisté avec SecureStore
- * Stocke les tokens et l'utilisateur de manière sécurisée
  */
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
-      // État initial
       user: null,
       accessToken: null,
       refreshToken: null,
@@ -64,67 +59,83 @@ export const useAuthStore = create<AuthState>()(
       isLoading: true,
 
       /**
-       * Connecte un utilisateur en stockant ses données et tokens
+       * Connecte un utilisateur. 
+       * Supporte l'objet AuthResponse complet ou (user, access, refresh)
        */
-      login: (user, accessToken, refreshToken) =>
-        set({
-          user,
-          accessToken,
-          refreshToken,
-          isAuthenticated: true,
-          isLoading: false,
-        }),
+      login: (authData, access, refresh) => {
+        console.log('[AuthStore] Connexion en cours...', authData);
+        // Déduction du format (cas Polymorphisme)
+        if ('accessToken' in authData) {
+          // Format AuthResponse
+          set({
+            user: authData.user,
+            accessToken: authData.accessToken,
+            refreshToken: authData.refreshToken,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+          console.log('[AuthStore] Token enregistré:', authData.accessToken.substring(0, 10) + '...');
+        } else {
+          // Format (user, access, refresh)
+          set({
+            user: authData,
+            accessToken: access || null,
+            refreshToken: refresh || null,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+          console.log('[AuthStore] Token enregistré via arguments');
+        }
+      },
 
-      /**
-       * Déconnecte l'utilisateur en nettoyant tout l'état
-       */
-      logout: () =>
+      logout: () => {
+        console.log('[AuthStore] Déconnexion');
         set({
           user: null,
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
           isLoading: false,
-        }),
+        });
+      },
 
-      /**
-       * Met à jour les tokens après un refresh
-       */
-      setTokens: (accessToken, refreshToken) =>
-        set({ accessToken, refreshToken }),
+      setTokens: (accessToken, refreshToken) => {
+        console.log('[AuthStore] Mise à jour des tokens');
+        set({ accessToken, refreshToken });
+      },
 
-      /**
-       * Met à jour partiellement les données utilisateur
-       */
       updateUser: (partial) =>
         set((state) => ({
           user: state.user ? { ...state.user, ...partial } : null,
         })),
 
-      /**
-       * Indique si l'app est en cours de chargement initial
-       */
       setLoading: (loading) => set({ isLoading: loading }),
 
       /**
        * Vérifie si l'utilisateur courant est administrateur
+       * CORRECTION: Utilise des strings littérales pour éviter l'erreur de type
        */
       isAdmin: () => {
-        const roles = get().user?.roles ?? [];
-        return roles.includes(Role.ADMIN);
+        const user = get().user;
+        if (!user) {
+          console.warn('[AuthStore] isAdmin(): User is null');
+          return false;
+        }
+        
+        // Supporte single role ou array roles (compatibilité backend)
+        const roles = user.roles || (user.role ? [user.role] : []);
+        const result = roles.includes('ADMIN');
+        console.log('[AuthStore] isAdmin ?', result, roles);
+        return result;
       },
 
-      /**
-       * Vérifie si l'utilisateur courant est membre
-       */
       isMember: () => {
-        const roles = get().user?.roles ?? [];
-        return roles.includes(Role.MEMBER);
+        const user = get().user;
+        if (!user) return false;
+        const roles = user.roles || (user.role ? [user.role] : []);
+        return roles.includes('MEMBER');
       },
 
-      /**
-       * Retourne le nom complet de l'utilisateur
-       */
       fullName: () => {
         const user = get().user;
         return user ? `${user.prenoms} ${user.nom}` : '';
@@ -133,7 +144,6 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'dream-team-auth',
       storage: createJSONStorage(() => secureStorage),
-      // Ne pas persister isLoading
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,

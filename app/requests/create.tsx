@@ -48,7 +48,7 @@ export default function CreateRequestScreen() {
 
   return (
     <View style={st.container}>
-      <LinearGradient colors={COLORS.warningGradient as any} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.header}>
+      <LinearGradient colors={COLORS.primaryGradient as any} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.header}>
         <View style={st.bgC} />
         <TouchableOpacity style={st.back} onPress={() => router.back()}>
           <ArrowLeft size={24} color={COLORS.white} />

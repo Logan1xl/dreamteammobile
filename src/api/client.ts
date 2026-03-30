@@ -21,6 +21,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
   },
 });
 
@@ -30,9 +31,14 @@ const apiClient = axios.create({
  */
 apiClient.interceptors.request.use(
   (config) => {
-    const token = useAuthStore.getState().accessToken;
+    const state = useAuthStore.getState();
+    const token = state.accessToken;
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      // console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url} - Token injecté`);
+    } else {
+      console.warn(`[API Request] ${config.method?.toUpperCase()} ${config.url} - AUCUN TOKEN trouvé dans le Store`);
     }
     return config;
   },

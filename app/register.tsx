@@ -1,65 +1,32 @@
-/**
- * ============================================================
- * Écran d'Inscription - Dream Team Mobile
- * Design premium avec formulaire complet, validation en temps
- * réel et intégration API Register
- * ============================================================
- */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
+  Text,
   TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
   Alert,
   Dimensions,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withDelay,
-  withTiming,
-} from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import {
-  User,
-  Mail,
-  Lock,
-  Phone,
-  Eye,
-  EyeOff,
-  UserPlus,
-  ArrowLeft,
-} from 'lucide-react-native';
-import { register as registerApi } from '../src/api/auth';
+import { StatusBar } from 'expo-status-bar';
+import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, SHADOWS, RADIUS, FONT_SIZE, FONT_WEIGHT, SPACING } from '../src/theme/theme';
+import { register } from '../src/api/auth';
 import { useAuthStore } from '../src/store/useAuthStore';
-import GradientButton from '../src/components/common/GradientButton';
-import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../src/theme/theme';
 
 const { height } = Dimensions.get('window');
 
-/** Champ de formulaire individuel */
-interface FieldConfig {
-  key: string;
-  label: string;
-  placeholder: string;
-  icon: React.ReactNode;
-  keyboardType?: 'default' | 'email-address' | 'phone-pad';
-  secure?: boolean;
-  autoCapitalize?: 'none' | 'sentences' | 'words';
-}
-
 export default function RegisterScreen() {
   const router = useRouter();
-  const loginStore = useAuthStore((s) => s.login);
-
-  // État du formulaire
+  const setAuth = useAuthStore((state) => state.login);
+  
   const [form, setForm] = useState({
     nom: '',
     prenoms: '',
@@ -68,263 +35,99 @@ export default function RegisterScreen() {
     password: '',
     confirmPassword: '',
   });
+  const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Animation d'entrée
-  const formOpacity = useSharedValue(0);
-  const formTranslateY = useSharedValue(50);
-
-  useEffect(() => {
-    formOpacity.value = withDelay(200, withTiming(1, { duration: 600 }));
-    formTranslateY.value = withDelay(
-      200,
-      withSpring(0, { damping: 18, stiffness: 100 })
-    );
-  }, []);
-
-  const formAnimStyle = useAnimatedStyle(() => ({
-    opacity: formOpacity.value,
-    transform: [{ translateY: formTranslateY.value }],
-  }));
-
-  /**
-   * Met à jour un champ du formulaire et efface l'erreur associée
-   */
-  const updateField = (key: string, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    if (errors[key]) {
-      setErrors((prev) => {
-        const updated = { ...prev };
-        delete updated[key];
-        return updated;
-      });
-    }
-  };
-
-  /**
-   * Validation complète du formulaire
-   */
-  const validate = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    if (!form.nom.trim()) newErrors.nom = 'Le nom est requis';
-    if (!form.prenoms.trim()) newErrors.prenoms = 'Les prénoms sont requis';
-
-    if (!form.email.trim()) {
-      newErrors.email = "L'email est requis";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      newErrors.email = 'Email invalide';
-    }
-
-    if (form.telephone && !/^(\+237|237)?[26][0-9]{8}$/.test(form.telephone)) {
-      newErrors.telephone = 'Format : 6XXXXXXXX ou +237XXXXXXXXX';
-    }
-
-    if (!form.password) {
-      newErrors.password = 'Le mot de passe est requis';
-    } else if (form.password.length < 8) {
-      newErrors.password = 'Minimum 8 caractères';
-    }
-
-    if (form.password !== form.confirmPassword) {
-      newErrors.confirmPassword = 'Les mots de passe ne correspondent pas';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  /**
-   * Soumet l'inscription au backend
-   */
   const handleRegister = async () => {
-    if (!validate()) return;
+    if (!form.nom || !form.email || !form.password) {
+      Alert.alert('Champs requis', 'Veuillez remplir le nom, l\'email et le mot de passe.');
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      Alert.alert('Erreur', 'Les mot de passes diffèrent.');
+      return;
+    }
 
-    setLoading(true);
+    setIsLoading(true);
     try {
-      const response = await registerApi({
-        nom: form.nom.trim(),
-        prenoms: form.prenoms.trim(),
-        email: form.email.trim(),
+      const res = await register({
+        nom: form.nom,
+        prenoms: form.prenoms,
+        email: form.email,
+        telephone: form.telephone,
         password: form.password,
-        telephone: form.telephone.trim() || undefined,
       });
-
-      if (response.success && response.data) {
-        const { accessToken, refreshToken, user } = response.data;
-        loginStore(user, accessToken, refreshToken);
-        Alert.alert('🎉 Bienvenue !', 'Votre compte a été créé avec succès.', [
-          { text: 'Continuer', onPress: () => router.replace('/(tabs)') },
-        ]);
+      
+      if (res.success && res.data) {
+        // Correction ici : On passe l'objet de réponse complet ou les 3 arguments
+        setAuth(res.data); 
+        Alert.alert('Succès', 'Compte créé !', [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]);
       } else {
-        Alert.alert('Erreur', response.message || "Erreur lors de l'inscription");
+        Alert.alert('Erreur', res.message || 'Échec inscription');
       }
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message || "Impossible de créer le compte.";
-      Alert.alert("Erreur d'inscription", message);
+    } catch (e) {
+      Alert.alert('Erreur', 'Connexion impossible');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
-
-  /**
-   * Rend un champ de saisie avec icône et gestion d'erreur
-   */
-  const renderField = (config: FieldConfig) => {
-    const value = form[config.key as keyof typeof form];
-    const error = errors[config.key];
-    const isPassword = config.secure;
-    const showPw = config.key === 'password' ? showPassword : showConfirm;
-    const togglePw =
-      config.key === 'password'
-        ? () => setShowPassword(!showPassword)
-        : () => setShowConfirm(!showConfirm);
-
-    return (
-      <View style={styles.inputGroup} key={config.key}>
-        <Text style={styles.label}>{config.label}</Text>
-        <View style={[styles.inputContainer, error ? styles.inputError : null]}>
-          <View style={styles.inputIcon}>{config.icon}</View>
-          <TextInput
-            style={styles.input}
-            placeholder={config.placeholder}
-            placeholderTextColor={COLORS.gray400}
-            value={value}
-            onChangeText={(t) => updateField(config.key, t)}
-            keyboardType={config.keyboardType || 'default'}
-            autoCapitalize={config.autoCapitalize || 'sentences'}
-            secureTextEntry={isPassword && !showPw}
-          />
-          {isPassword && (
-            <TouchableOpacity onPress={togglePw} style={styles.eyeBtn}>
-              {showPw ? (
-                <EyeOff size={20} color={COLORS.gray400} />
-              ) : (
-                <Eye size={20} color={COLORS.gray400} />
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-        {error && <Text style={styles.errorText}>{error}</Text>}
-      </View>
-    );
-  };
-
-  // Configuration des champs
-  const fields: FieldConfig[] = [
-    {
-      key: 'nom',
-      label: 'Nom',
-      placeholder: 'Votre nom de famille',
-      icon: <User size={20} color={COLORS.gray400} />,
-      autoCapitalize: 'words',
-    },
-    {
-      key: 'prenoms',
-      label: 'Prénoms',
-      placeholder: 'Vos prénoms',
-      icon: <User size={20} color={COLORS.gray400} />,
-      autoCapitalize: 'words',
-    },
-    {
-      key: 'email',
-      label: 'Email',
-      placeholder: 'exemple@email.com',
-      icon: <Mail size={20} color={COLORS.gray400} />,
-      keyboardType: 'email-address',
-      autoCapitalize: 'none',
-    },
-    {
-      key: 'telephone',
-      label: 'Téléphone (optionnel)',
-      placeholder: '6XXXXXXXX',
-      icon: <Phone size={20} color={COLORS.gray400} />,
-      keyboardType: 'phone-pad',
-    },
-    {
-      key: 'password',
-      label: 'Mot de passe',
-      placeholder: 'Minimum 8 caractères',
-      icon: <Lock size={20} color={COLORS.gray400} />,
-      secure: true,
-      autoCapitalize: 'none',
-    },
-    {
-      key: 'confirmPassword',
-      label: 'Confirmer le mot de passe',
-      placeholder: 'Confirmez le mot de passe',
-      icon: <Lock size={20} color={COLORS.gray400} />,
-      secure: true,
-      autoCapitalize: 'none',
-    },
-  ];
 
   return (
     <View style={styles.container}>
-      {/* Header dégradé compact */}
-      <LinearGradient
-        colors={COLORS.primaryGradient as unknown as [string, string, ...string[]]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.header}
-      >
-        <View style={[styles.circle, styles.circle1]} />
-        <View style={[styles.circle, styles.circle2]} />
+      <StatusBar style="light" />
+      <LinearGradient colors={[COLORS.primaryDeep, COLORS.primary]} style={StyleSheet.absoluteFill} />
+      
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color={COLORS.white} />
+          </TouchableOpacity>
 
-        {/* Bouton retour */}
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <ArrowLeft size={24} color={COLORS.white} />
-        </TouchableOpacity>
+          <Animated.View entering={FadeInDown.delay(200)} style={styles.header}>
+            <Text style={styles.title}>Rejoignez-nous</Text>
+            <Text style={styles.subtitle}>Créez votre compte Dream Team</Text>
+          </Animated.View>
 
-        <View style={styles.headerContent}>
-          <View style={styles.iconCircle}>
-            <UserPlus size={32} color={COLORS.white} />
-          </View>
-          <Text style={styles.headerTitle}>Créer un compte</Text>
-          <Text style={styles.headerSub}>
-            Rejoignez Dream Team en quelques étapes
-          </Text>
-        </View>
-      </LinearGradient>
-
-      {/* Formulaire */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.formWrapper}
-      >
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Animated.View style={[styles.form, formAnimStyle]}>
-            {fields.map(renderField)}
-
-            {/* Bouton inscription */}
-            <View style={styles.buttonContainer}>
-              <GradientButton
-                title="Créer mon compte"
-                onPress={handleRegister}
-                loading={loading}
-                icon={<UserPlus size={20} color={COLORS.white} />}
-                size="lg"
-              />
+          <Animated.View entering={FadeInUp.delay(400)} style={styles.formContainer}>
+            <View style={styles.row}>
+              <View style={[styles.inputWrapper, { flex: 1, marginRight: 8 }]}>
+                <Text style={styles.label}>NOM</Text>
+                <TextInput style={styles.input} placeholder="Nom" value={form.nom} onChangeText={(v) => setForm({...form, nom: v})} />
+              </View>
+              <View style={[styles.inputWrapper, { flex: 1 }]}>
+                <Text style={styles.label}>PRÉNOMS</Text>
+                <TextInput style={styles.input} placeholder="Prénoms" value={form.prenoms} onChangeText={(v) => setForm({...form, prenoms: v})} />
+              </View>
             </View>
 
-            {/* Lien vers connexion */}
-            <View style={styles.loginLink}>
-              <Text style={styles.loginText}>Déjà un compte ?</Text>
-              <TouchableOpacity onPress={() => router.replace('/login')}>
-                <Text style={styles.loginButton}> Se connecter</Text>
-              </TouchableOpacity>
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>EMAIL</Text>
+              <TextInput style={styles.input} placeholder="votre@email.com" value={form.email} onChangeText={(v) => setForm({...form, email: v})} autoCapitalize="none" />
             </View>
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>TÉLÉPHONE</Text>
+              <TextInput style={styles.input} placeholder="6XXXXXXXX" value={form.telephone} onChangeText={(v) => setForm({...form, telephone: v})} keyboardType="phone-pad" />
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>MOT DE PASSE</Text>
+              <View style={styles.pwRow}>
+                <TextInput style={[styles.input, { flex: 1 }]} placeholder="••••••••" value={form.password} onChangeText={(v) => setForm({...form, password: v})} secureTextEntry={!showPassword} />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color={COLORS.gray400} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>CONFIRMATION</Text>
+              <TextInput style={styles.input} placeholder="••••••••" value={form.confirmPassword} onChangeText={(v) => setForm({...form, confirmPassword: v})} secureTextEntry={!showPassword} />
+            </View>
+
+            <TouchableOpacity style={[styles.btn, isLoading && { opacity: 0.7 }]} onPress={handleRegister} disabled={isLoading}>
+              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>S'inscrire</Text>}
+            </TouchableOpacity>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -333,133 +136,18 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  // Header
-  header: {
-    height: height * 0.28,
-    justifyContent: 'flex-end',
-    paddingBottom: SPACING.xxl,
-    paddingHorizontal: SPACING.xl,
-    overflow: 'hidden',
-  },
-  headerContent: {
-    alignItems: 'center',
-    zIndex: 2,
-  },
-  backButton: {
-    position: 'absolute',
-    top: 50,
-    left: SPACING.lg,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.whiteAlpha(0.2),
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 3,
-  },
-  circle: {
-    position: 'absolute',
-    borderRadius: 9999,
-    backgroundColor: COLORS.whiteAlpha(0.08),
-  },
-  circle1: { width: 180, height: 180, top: -30, right: -50 },
-  circle2: { width: 120, height: 120, bottom: 10, left: -40 },
-  iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.whiteAlpha(0.2),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  headerTitle: {
-    fontSize: FONT_SIZE.xxl,
-    fontWeight: FONT_WEIGHT.extrabold,
-    color: COLORS.white,
-    marginBottom: SPACING.xs,
-  },
-  headerSub: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.whiteAlpha(0.8),
-    textAlign: 'center',
-  },
-  // Formulaire
-  formWrapper: {
-    flex: 1,
-    marginTop: -SPACING.xl,
-  },
-  scrollContent: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xxl,
-  },
-  form: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xxl,
-    padding: SPACING.xl,
-    ...SHADOWS.heavy,
-  },
-  inputGroup: {
-    marginBottom: SPACING.md,
-  },
-  label: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.semibold,
-    color: COLORS.gray600,
-    marginBottom: SPACING.xs + 2,
-    letterSpacing: 0.3,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1.5,
-    borderColor: COLORS.gray200,
-    paddingHorizontal: SPACING.md,
-    height: 52,
-  },
-  inputError: {
-    borderColor: COLORS.danger,
-    backgroundColor: COLORS.dangerLight,
-  },
-  inputIcon: {
-    marginRight: SPACING.sm,
-  },
-  input: {
-    flex: 1,
-    fontSize: FONT_SIZE.md,
-    color: COLORS.black,
-  },
-  eyeBtn: {
-    padding: SPACING.xs,
-  },
-  errorText: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.danger,
-    marginTop: SPACING.xs,
-    marginLeft: SPACING.xs,
-  },
-  buttonContainer: {
-    marginTop: SPACING.lg,
-  },
-  loginLink: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: SPACING.lg,
-    paddingBottom: SPACING.sm,
-  },
-  loginText: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.gray500,
-  },
-  loginButton: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
-  },
+  container: { flex: 1 },
+  scrollContent: { padding: 20, paddingTop: 60 },
+  backBtn: { marginBottom: 20 },
+  header: { marginBottom: 30 },
+  title: { fontSize: 32, fontWeight: '800', color: COLORS.white },
+  subtitle: { fontSize: 14, color: COLORS.accent, fontWeight: '600' },
+  formContainer: { backgroundColor: COLORS.white, borderRadius: 24, padding: 24, ...SHADOWS.heavy },
+  row: { flexDirection: 'row', marginBottom: 16 },
+  inputWrapper: { marginBottom: 16 },
+  label: { fontSize: 10, fontWeight: '800', color: COLORS.gray500, marginBottom: 8 },
+  input: { backgroundColor: COLORS.gray50, borderRadius: 12, borderWidth: 1, borderColor: COLORS.gray100, paddingHorizontal: 15, height: 50, color: COLORS.primaryDeep },
+  pwRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.gray50, borderRadius: 12, borderWidth: 1, borderColor: COLORS.gray100, paddingRight: 15 },
+  btn: { backgroundColor: COLORS.primary, height: 56, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 10, ...SHADOWS.heavy },
+  btnText: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
 });
