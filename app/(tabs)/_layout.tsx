@@ -1,21 +1,14 @@
 /**
  * ============================================================
  * Layout des Onglets - Dream Team Mobile
- * Navigation par onglets avec icônes animées et dégradé
+ * Navigation par onglets avec icônes Ionicons harmonisées
  * ============================================================
  */
 import React from 'react';
 import { StyleSheet, View, Platform } from 'react-native';
 import { Tabs } from 'expo-router';
-import {
-  Home,
-  Repeat,
-  CreditCard,
-  PiggyBank,
-  UserCircle,
-} from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SHADOWS, FONT_SIZE, FONT_WEIGHT } from '../../src/theme/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, SHADOWS, RADIUS } from '../../src/theme/theme';
 
 export default function TabsLayout() {
   return (
@@ -27,6 +20,7 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: COLORS.gray400,
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
+        tabBarHideOnKeyboard: true,
       }}
     >
       {/* Onglet Accueil / Dashboard */}
@@ -36,7 +30,7 @@ export default function TabsLayout() {
           title: 'Accueil',
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? styles.activeIconContainer : undefined}>
-              <Home size={22} color={focused ? COLORS.primary : color} strokeWidth={focused ? 2.5 : 2} />
+              <Ionicons name={focused ? "grid" : "grid-outline"} size={22} color={focused ? COLORS.primary : color} />
             </View>
           ),
         }}
@@ -49,7 +43,7 @@ export default function TabsLayout() {
           title: 'Tontines',
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? styles.activeIconContainer : undefined}>
-              <Repeat size={22} color={focused ? COLORS.primary : color} strokeWidth={focused ? 2.5 : 2} />
+              <Ionicons name={focused ? "repeat" : "repeat-outline"} size={22} color={focused ? COLORS.primary : color} />
             </View>
           ),
         }}
@@ -62,7 +56,7 @@ export default function TabsLayout() {
           title: 'Paiements',
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? styles.activeIconContainer : undefined}>
-              <CreditCard size={22} color={focused ? COLORS.primary : color} strokeWidth={focused ? 2.5 : 2} />
+              <Ionicons name={focused ? "card" : "card-outline"} size={22} color={focused ? COLORS.primary : color} />
             </View>
           ),
         }}
@@ -75,7 +69,7 @@ export default function TabsLayout() {
           title: 'Épargne',
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? styles.activeIconContainer : undefined}>
-              <PiggyBank size={22} color={focused ? COLORS.primary : color} strokeWidth={focused ? 2.5 : 2} />
+              <Ionicons name={focused ? "wallet" : "wallet-outline"} size={22} color={focused ? COLORS.primary : color} />
             </View>
           ),
         }}
@@ -88,7 +82,7 @@ export default function TabsLayout() {
           title: 'Profil',
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? styles.activeIconContainer : undefined}>
-              <UserCircle size={22} color={focused ? COLORS.primary : color} strokeWidth={focused ? 2.5 : 2} />
+              <Ionicons name={focused ? "person" : "person-outline"} size={22} color={focused ? COLORS.primary : color} />
             </View>
           ),
         }}
@@ -103,11 +97,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
     height: Platform.OS === 'ios' ? 88 : 70,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 12,
     ...SHADOWS.heavy,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
     position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   tabLabel: {
     fontSize: 10,
@@ -121,9 +118,10 @@ const styles = StyleSheet.create({
   },
   activeIconContainer: {
     backgroundColor: COLORS.primarySoft,
-    borderRadius: 15,
-    padding: 8,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: COLORS.primaryAlpha(0.1),
+    borderColor: COLORS.primaryAlpha(0.05),
   },
 });

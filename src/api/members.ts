@@ -52,3 +52,10 @@ export const getMemberFinancialStatus = async (
   const response = await apiClient.get(`${MEMBERS_BASE}/${id}/financial-status`);
   return response.data;
 };
+/**
+ * Soumet une nouvelle candidature (Inscription initiale)
+ */
+export const submitApplication = async (data: any): Promise<ApiResponse<MemberResponse>> => {
+  const response = await apiClient.post(`${MEMBERS_BASE}/apply`, data);
+  return response.data;
+};
