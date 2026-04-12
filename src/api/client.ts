@@ -17,7 +17,7 @@ export const BASE_URL = 'https://polytomous-kristi-overimpressibly.ngrok-free.de
  */
 const apiClient = axios.create({
   baseURL: BASE_URL,
-  timeout: 15000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -38,7 +38,7 @@ apiClient.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
       // console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url} - Token injecté`);
     } else {
-      console.warn(`[API Request] ${config.method?.toUpperCase()} ${config.url} - AUCUN TOKEN trouvé dans le Store`);
+      // console.warn(`[API Request] ${config.method?.toUpperCase()} ${config.url} - AUCUN TOKEN trouvé dans le Store`);
     }
     return config;
   },

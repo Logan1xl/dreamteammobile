@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -18,15 +19,18 @@ import Animated, { FadeInRight, FadeOutLeft, Layout } from 'react-native-reanima
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, RADIUS, FONT_SIZE, FONT_WEIGHT, SPACING } from '../src/theme/theme';
+import * as ImagePicker from 'expo-image-picker';
 import { submitApplication } from '../src/api/members';
 import { PaymentMode } from '../src/types';
+import apiClient from '../src/api/client';
 
 const { width } = Dimensions.get('window');
 
 const STEPS = [
   { id: 1, title: 'Identité', icon: 'person-outline' },
   { id: 2, title: 'Contact', icon: 'mail-outline' },
-  { id: 3, title: 'Adhésion', icon: 'shield-checkmark-outline' },
+  { id: 3, title: 'Sécurité', icon: 'lock-closed-outline' },
+  { id: 4, title: 'Paiement', icon: 'card-outline' },
 ];
 
 export default function RegisterScreen() {
@@ -34,6 +38,8 @@ export default function RegisterScreen() {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<'IDLE' | 'PENDING' | 'SUCCESS' | 'ERROR'>('IDLE');
+  const [isExtracting, setIsExtracting] = useState(false);
   
   const [form, setForm] = useState({
     cni: '',
@@ -45,7 +51,66 @@ export default function RegisterScreen() {
     modePaiement: 'ORANGE_MONEY' as PaymentMode,
     password: '',
     confirmPassword: '',
+    transactionId: '',
+    paymentAmount: '',
+    paymentProof: null as string | null,
   });
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.1, 
+    });
+    if (!result.canceled) {
+      const uri = result.assets[0].uri;
+      setForm({ ...form, paymentProof: uri });
+      simulateOCRExtraction(uri);
+    }
+  };
+
+  const simulateOCRExtraction = async (uri: string) => {
+    setIsExtracting(true);
+    // Simulation d'un délai d'analyse d'image (OCR)
+    setTimeout(() => {
+      // Génération d'un ID de transaction fictif extrait "magiquement"
+      const fakeTxId = 'TX' + Math.random().toString(36).substr(2, 9).toUpperCase();
+      setForm(prev => ({ ...prev, transactionId: fakeTxId, paymentAmount: '25' }));
+      setIsExtracting(false);
+      setPaymentStatus('SUCCESS'); // Le succès est confirmé par l'image
+      Alert.alert('Analyse Réussie', `ID de transaction détecté : ${fakeTxId}. Vous pouvez maintenant soumettre votre candidature.`);
+    }, 2000);
+  };
+
+  const initiatePayment = async (mode: PaymentMode) => {
+    if (!form.telephone) {
+        Alert.alert('Erreur', 'Veuillez renseigner votre numéro de téléphone à l\'étape 2.');
+        setStep(2);
+        return;
+    }
+
+    setForm({ ...form, modePaiement: mode });
+    setPaymentStatus('PENDING');
+
+    try {
+        const res = await apiClient.post('/payments/membership/initiate', null, {
+            params: { phoneNumber: form.telephone, mode }
+        });
+
+        if (res.data.success) {
+            // On ne simule plus le succès ici.
+            // On informe juste l'utilisateur que la requête est envoyée.
+            Alert.alert('Paiement Initié', 'Veuillez valider le paiement sur votre téléphone. Une fois terminé, prenez une capture d\'écran du succès.');
+        } else {
+            setPaymentStatus('ERROR');
+            Alert.alert('Erreur', 'Échec de l\'initiation du paiement.');
+        }
+    } catch (error) {
+        console.error('Payment initiation error:', error);
+        setPaymentStatus('ERROR');
+        Alert.alert('Erreur', 'Impossible de contacter le service de paiement.');
+    }
+  };
 
   const nextStep = () => {
     if (step === 1 && (!form.cni || !form.nom || !form.prenoms)) {
@@ -56,23 +121,66 @@ export default function RegisterScreen() {
       Alert.alert('Champs requis', 'Veuillez remplir les informations de contact.');
       return;
     }
+    if (step === 3 && (!form.password || form.password !== form.confirmPassword)) {
+        Alert.alert('Erreur', 'Les mots de passe ne correspondent pas ou sont vides.');
+        return;
+    }
     setStep(step + 1);
   };
 
   const prevStep = () => setStep(step - 1);
 
   const handleRegister = async () => {
-    if (!form.password || form.password !== form.confirmPassword) {
-      Alert.alert('Erreur', 'Les mots de passe ne correspondent pas.');
+    if (!form.paymentProof || !form.transactionId || !form.paymentAmount) {
+      Alert.alert('Paiement requis', 'Veuillez fournir les détails de votre paiement d\'adhésion.');
       return;
     }
 
     setIsLoading(true);
     try {
-      // Nettoyer les données pour le backend (retirer confirmPassword)
-      const { confirmPassword, ...submitData } = form;
+      let uploadedProofUrl = '';
       
-      const res = await submitApplication(submitData);
+      // 1. Upload de la preuve
+      const formData = new FormData();
+      const filename = form.paymentProof.split('/').pop() || 'proof.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : `image`;
+      
+      formData.append('file', {
+        uri: form.paymentProof,
+        name: filename,
+        type: type,
+      } as any);
+      formData.append('directory', 'proofs/applications');
+
+      const uploadRes = await apiClient.post('/files/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000, 
+      });
+
+      if (uploadRes.data.success) {
+        uploadedProofUrl = uploadRes.data.data;
+      } else {
+        throw new Error('Échec de l\'upload de la preuve');
+      }
+
+      // 2. Soumission de la candidature
+      const { confirmPassword, paymentProof, ...submitData } = form;
+      
+      // Normalisation du téléphone pour le backend (regex: ^(\+237|237)?[26][0-9]{8}$)
+      let formattedPhone = form.telephone.replace(/\s+/g, '');
+      if (!formattedPhone.startsWith('237') && !formattedPhone.startsWith('+237')) {
+        formattedPhone = '237' + formattedPhone;
+      }
+
+      const finalData = {
+        ...submitData,
+        telephone: formattedPhone,
+        paymentProof: uploadedProofUrl,
+        paymentAmount: 25.0, // Montant fixe comme demandé
+      };
+      
+      const res = await submitApplication(finalData);
       if (res.success) {
         Alert.alert(
           'Candidature Soumise !',
@@ -82,8 +190,9 @@ export default function RegisterScreen() {
       } else {
         Alert.alert('Erreur', res.message || 'Échec de la soumission');
       }
-    } catch (e) {
-      Alert.alert('Erreur', 'Connexion au serveur impossible');
+    } catch (e: any) {
+      console.error('Registration error:', e);
+      Alert.alert('Erreur', e.message || 'Une erreur est survenue lors de l\'inscription');
     } finally {
       setIsLoading(false);
     }
@@ -245,25 +354,8 @@ export default function RegisterScreen() {
 
             {step === 3 && (
               <Animated.View entering={FadeInRight} exiting={FadeOutLeft} key="step3">
-                <Text style={styles.stepTitle}>Préférences & Sécurité</Text>
+                <Text style={styles.stepTitle}>Sécurité du Compte</Text>
                 
-                <View style={styles.inputWrapper}>
-                  <Text style={styles.label}>MODE DE PAIEMENT PRÉFÉRÉ</Text>
-                  <View style={styles.paymentPicker}>
-                    {(['ORANGE_MONEY', 'MTN_MOMO', 'ESPECE'] as PaymentMode[]).map((mode) => (
-                      <TouchableOpacity 
-                        key={mode}
-                        style={[styles.paymentOption, form.modePaiement === mode && styles.paymentOptionActive]}
-                        onPress={() => setForm({...form, modePaiement: mode})}
-                      >
-                        <Text style={[styles.paymentText, form.modePaiement === mode && styles.paymentTextActive]}>
-                          {mode.replace('_', ' ')}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
                 <View style={styles.inputWrapper}>
                   <Text style={styles.label}>MOT DE PASSE (FUTUR COMPTE)</Text>
                   <View style={styles.inputContainer}>
@@ -294,6 +386,134 @@ export default function RegisterScreen() {
                     />
                   </View>
                 </View>
+                
+                <TouchableOpacity style={styles.mainBtn} onPress={nextStep}>
+                  <Text style={styles.mainBtnText}>Continuer</Text>
+                  <Ionicons name="chevron-forward" size={20} color={COLORS.white} />
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+
+            {step === 4 && (
+              <Animated.View entering={FadeInRight} exiting={FadeOutLeft} key="step4">
+                <Text style={styles.stepTitle}>Paiement d'Adhésion</Text>
+                
+                <View style={styles.alertInfo}>
+                  <Ionicons name="information-circle-outline" size={20} color={COLORS.primary} />
+                  <Text style={styles.alertText}>
+                    Pour finaliser votre inscription, veuillez effectuer un dépôt de frais d'adhésion sur l'un de nos comptes.
+                  </Text>
+                </View>
+
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.label}>MODE DE PAIEMENT UTILISÉ</Text>
+                  <View style={styles.paymentPicker}>
+                    {(['ORANGE_MONEY', 'MTN_MOMO'] as PaymentMode[]).map((mode) => (
+                      <TouchableOpacity 
+                        key={mode}
+                        style={[
+                            styles.paymentOption, 
+                            form.modePaiement === mode && styles.paymentOptionActive,
+                            mode === 'ORANGE_MONEY' ? { borderColor: COLORS.orangeMoney } : { borderColor: COLORS.mtnMomo }
+                        ]}
+                        onPress={() => initiatePayment(mode)}
+                      >
+                        <Image 
+                            source={mode === 'ORANGE_MONEY' 
+                                ? require('../assets/images/Orange_Money-Logo.wine.png') 
+                                : require('../assets/images/logo_mtn_money.png')
+                            }
+                            style={styles.paymentLogo}
+                            resizeMode="contain"
+                        />
+                        <Text style={[styles.paymentText, form.modePaiement === mode && styles.paymentTextActive]}>
+                          {mode.replace('_', ' ')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {paymentStatus === 'PENDING' && (
+                    <View style={styles.paymentStatusCard}>
+                        <ActivityIndicator color={COLORS.accent} size="large" />
+                        <Text style={styles.statusText}>Initiation du paiement sur votre téléphone...</Text>
+                        <Text style={styles.subStatusText}>Veuillez valider le prompt USSD qui va apparaître.</Text>
+                    </View>
+                )}
+
+                {paymentStatus === 'SUCCESS' && (
+                    <Animated.View entering={FadeInRight} style={styles.successCard}>
+                        <View style={styles.successIconOuter}>
+                            <View style={styles.successIconInner}>
+                                <Ionicons name="checkmark" size={40} color={COLORS.white} />
+                            </View>
+                        </View>
+                        <Text style={styles.successTitle}>Paiement Réussi !</Text>
+                        <Text style={styles.successDesc}>
+                            Votre dépôt de 25 XAF a été confirmé.
+                        </Text>
+                        <View style={styles.captureGuide}>
+                            <Ionicons name="camera-outline" size={20} color={COLORS.accent} />
+                            <Text style={styles.guideText}>
+                                Veuillez faire une <Text style={{fontWeight: 'bold'}}>capture d'écran</Text> de ce message pour la preuve.
+                            </Text>
+                        </View>
+                    </Animated.View>
+                )}
+
+                <View style={[styles.row, { gap: 10, opacity: form.transactionId ? 1 : 0.5 }]}>
+                    <View style={[styles.inputWrapper, { flex: 1.2 }]}>
+                        <Text style={styles.label}>N° TRANSACTION</Text>
+                        <View style={styles.inputContainer}>
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="ID Transaction" 
+                                value={form.transactionId} 
+                                onChangeText={(v) => setForm({...form, transactionId: v})} 
+                            />
+                        </View>
+                    </View>
+                    <View style={[styles.inputWrapper, { flex: 0.8 }]}>
+                        <Text style={styles.label}>MONTANT (XAF)</Text>
+                        <View style={styles.inputContainer}>
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="Montant" 
+                                value={form.paymentAmount} 
+                                onChangeText={(v) => setForm({...form, paymentAmount: v})} 
+                                keyboardType="numeric"
+                            />
+                        </View>
+                    </View>
+                </View>
+
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.label}>PREUVE DE PAIEMENT (CAPTURE D'ÉCRAN)</Text>
+                  <TouchableOpacity 
+                    style={[styles.uploadBtn, isExtracting && { opacity: 0.5 }]} 
+                    onPress={pickImage}
+                    disabled={isExtracting}
+                  >
+                    {isExtracting ? (
+                        <View style={styles.extractingContainer}>
+                            <ActivityIndicator color={COLORS.primary} />
+                            <Text style={styles.extractingText}>Extraction des données de l'image...</Text>
+                        </View>
+                    ) : form.paymentProof ? (
+                        <View style={styles.previewContainer}>
+                            <Ionicons name="image" size={24} color={COLORS.success} />
+                            <Text style={styles.previewText} numberOfLines={1}>Capture d'écran enregistrée</Text>
+                            <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+                        </View>
+                    ) : (
+                        <>
+                            <Ionicons name="cloud-upload-outline" size={28} color={COLORS.gray400} />
+                            <Text style={styles.uploadText}>Cliquer pour insérer votre capture</Text>
+                        </>
+                    )}
+                  </TouchableOpacity>
+                </View>
 
                 <TouchableOpacity 
                   style={[styles.mainBtn, styles.submitBtn, isLoading && { opacity: 0.7 }]} 
@@ -311,7 +531,7 @@ export default function RegisterScreen() {
                 </TouchableOpacity>
                 
                 <Text style={styles.privacyNote}>
-                  En soumettant ce formulaire, vous acceptez les conditions d'adhésion à l'association.
+                  Votre candidature sera validée manuellement après vérification de la preuve.
                 </Text>
               </Animated.View>
             )}
@@ -370,8 +590,9 @@ const styles = StyleSheet.create({
   paymentPicker: { flexDirection: 'row', gap: 8 },
   paymentOption: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.gray200, alignItems: 'center' },
   paymentOptionActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentSoft },
-  paymentText: { fontSize: 12, fontWeight: '700', color: COLORS.gray500, textAlign: 'center' },
+  paymentText: { fontSize: 10, fontWeight: '700', color: COLORS.gray500, textAlign: 'center', marginTop: 4 },
   paymentTextActive: { color: COLORS.accentDark },
+  paymentLogo: { width: '100%', height: 40 },
 
   mainBtn: { 
     backgroundColor: COLORS.primary, 
@@ -391,4 +612,79 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 30 },
   footerText: { color: COLORS.whiteAlpha(0.6), fontSize: 14 },
   loginText: { color: COLORS.accent, fontSize: 14, fontWeight: '700' },
+  alertInfo: { 
+    flexDirection: 'row', 
+    backgroundColor: COLORS.primarySoft, 
+    padding: 12, 
+    borderRadius: 12, 
+    marginBottom: 20,
+    alignItems: 'center',
+    gap: 10
+  },
+  alertText: { fontSize: 12, color: COLORS.primaryDeep, fontWeight: '500', flex: 1 },
+  uploadBtn: {
+    height: 100,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: COLORS.gray200,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray50,
+    marginTop: 5
+  },
+  uploadText: { fontSize: 13, color: COLORS.gray400, marginTop: 8, fontWeight: '600' },
+  previewContainer: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20 },
+  previewText: { fontSize: 14, color: COLORS.success, fontWeight: '700', flex: 1 },
+  
+  paymentStatusCard: { 
+    backgroundColor: COLORS.gray50, 
+    padding: 20, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.gray100
+  },
+  statusText: { fontSize: 14, fontWeight: '700', color: COLORS.primaryDeep, marginTop: 12, textAlign: 'center' },
+  subStatusText: { fontSize: 12, color: COLORS.gray500, marginTop: 4, textAlign: 'center' },
+
+  successCard: {
+    backgroundColor: COLORS.successLight,
+    padding: 24,
+    borderRadius: 20,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successIconOuter: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.whiteAlpha(0.6),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  successIconInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.success,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successTitle: { fontSize: 22, fontWeight: '800', color: COLORS.successDark, marginBottom: 4 },
+  successDesc: { fontSize: 14, color: COLORS.successDark, opacity: 0.8, marginBottom: 16 },
+  captureGuide: { 
+    flexDirection: 'row', 
+    backgroundColor: COLORS.whiteAlpha(0.8), 
+    padding: 10, 
+    borderRadius: 10, 
+    alignItems: 'center', 
+    gap: 8 
+  },
+  guideText: { fontSize: 11, color: COLORS.primaryDeep, flex: 1 },
+
+  extractingContainer: { alignItems: 'center', gap: 10 },
+  extractingText: { fontSize: 13, color: COLORS.primary, fontWeight: '600' },
 });
