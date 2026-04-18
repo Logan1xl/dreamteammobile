@@ -108,13 +108,31 @@ export interface PaymentResponse {
 }
 
 // ==================== ÉPARGNE ====================
+export enum SavingsType {
+  SCOLAIRE = 'SCOLAIRE',
+  PROJET = 'PROJET',
+  ANNUELLE = 'ANNUELLE',
+  AUTRE = 'AUTRE'
+}
 
 export interface SavingsResponse {
   id: string;
-  balance?: number;
+  memberId: string;
+  memberName: string;
+  denomination: string;
+  balance: number;
   solde?: number;
-  isActive?: boolean;
-  createdAt?: string;
+  isActive: boolean;
+  typeEpargne: SavingsType;
+  description?: string;
+  createdAt: string;
+  dateOuverture?: string;
+}
+
+export interface SavingsSummaryResponse {
+  totalBalance: number;
+  activeAccounts: number;
+  memberId: string;
 }
 
 // ==================== REQUÊTES ====================

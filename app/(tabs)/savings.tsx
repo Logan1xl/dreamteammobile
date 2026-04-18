@@ -11,6 +11,7 @@ import {
   View,
   ScrollView,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -18,7 +19,12 @@ import {
   TrendingUp,
   Wallet,
   Lock,
+  Plus,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Download
 } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { getMemberSavings, getMemberSavingsSummary } from '../../src/api/savings';
 import { getMyMemberProfile } from '../../src/api/members';
 import { useAuthStore } from '../../src/store/useAuthStore';
@@ -35,6 +41,7 @@ import {
 } from '../../src/theme/theme';
 
 export default function SavingsScreen() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
 
@@ -67,10 +74,16 @@ export default function SavingsScreen() {
       }
     }
 
+    // Sécurité supplémentaire : si après tout on n'a toujours pas d'ID, on arrête
+    if (!currentMemberId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const [savingsRes, summaryRes] = await Promise.all([
-        getMemberSavings(currentMemberId),
-        getMemberSavingsSummary(currentMemberId),
+        getMemberSavings(currentMemberId as string),
+        getMemberSavingsSummary(currentMemberId as string),
       ]);
       if (savingsRes.success) setSavings(savingsRes.data || []);
       if (summaryRes.success) setSummary(summaryRes.data);
@@ -100,7 +113,7 @@ export default function SavingsScreen() {
     <View style={styles.container}>
       {/* Header avec solde total */}
       <LinearGradient
-        colors={['#10b981', '#059669', '#047857'] as unknown as [string, string, ...string[]]}
+        colors={COLORS.successGradient as any}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.header}
@@ -153,28 +166,20 @@ export default function SavingsScreen() {
                   <View
                     style={[
                       styles.accountIcon,
-                      {
-                        backgroundColor:
-                          account.typeEpargne === SavingsType.EPARGNE_BLOQUEE
-                            ? COLORS.warningLight
-                            : COLORS.successLight,
-                      },
+                      { backgroundColor: COLORS.primarySoft },
                     ]}
                   >
-                    {account.typeEpargne === SavingsType.EPARGNE_BLOQUEE ? (
-                      <Lock size={18} color={COLORS.warning} />
-                    ) : (
-                      <TrendingUp size={18} color={COLORS.success} />
-                    )}
+                    {account.typeEpargne === SavingsType.SCOLAIRE && <TrendingUp size={18} color={COLORS.primary} />}
+                    {account.typeEpargne === SavingsType.PROJET && <PiggyBank size={18} color={COLORS.primary} />}
+                    {account.typeEpargne === SavingsType.ANNUELLE && <Wallet size={18} color={COLORS.primary} />}
+                    {account.typeEpargne === SavingsType.AUTRE && <Lock size={18} color={COLORS.primary} />}
                   </View>
                   <View style={styles.accountTexts}>
                     <Text style={styles.accountName} numberOfLines={1}>
                       {account.denomination}
                     </Text>
                     <Text style={styles.accountType}>
-                      {account.typeEpargne === SavingsType.EPARGNE_BLOQUEE
-                        ? 'Bloquée'
-                        : 'Libre'}
+                      {account.typeEpargne}
                     </Text>
                   </View>
                 </View>
@@ -194,12 +199,35 @@ export default function SavingsScreen() {
                 </Text>
               </View>
 
-              {/* Description */}
-              {account.description && (
-                <Text style={styles.description} numberOfLines={2}>
-                  {account.description}
-                </Text>
-              )}
+              {/* Jauge de progression visuelle */}
+              <View style={styles.progressContainer}>
+                <View style={styles.progressHeader}>
+                  <Text style={styles.progressLabel}>OBJECTIF VISÉ</Text>
+                  <Text style={styles.progressPercent}>75%</Text>
+                </View>
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFill, { width: '75%', backgroundColor: COLORS.success }]} />
+                </View>
+              </View>
+
+              {/* Actions Rapides */}
+              <View style={styles.accountActions}>
+                <TouchableOpacity 
+                  style={[styles.actionButton, { backgroundColor: COLORS.successLight }]}
+                  onPress={() => router.push('/payment/create')}
+                >
+                  <ArrowDownLeft size={16} color={COLORS.success} />
+                  <Text style={[styles.actionButtonText, { color: COLORS.success }]}>Déposer</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.actionButton, { backgroundColor: COLORS.dangerLight }]}
+                  onPress={() => router.push({ pathname: '/requests', params: { type: 'RETRAIT_EPARGNE', accountId: account.id } })}
+                >
+                  <ArrowUpRight size={16} color={COLORS.danger} />
+                  <Text style={[styles.actionButtonText, { color: COLORS.danger }]}>Retirer</Text>
+                </TouchableOpacity>
+              </View>
             </AnimatedCard>
           ))
         )}
@@ -328,13 +356,59 @@ const styles = StyleSheet.create({
   balanceValue: {
     fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.extrabold,
+    color: COLORS.primaryDeep,
+  },
+  progressContainer: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  progressLabel: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: COLORS.gray500,
+    letterSpacing: 0.5,
+  },
+  progressPercent: {
+    fontSize: 10,
+    fontWeight: 'bold',
     color: COLORS.success,
   },
-  description: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.gray500,
-    marginTop: SPACING.sm,
-    lineHeight: 20,
+  progressBarBg: {
+    height: 6,
+    backgroundColor: COLORS.gray100,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  accountActions: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray50,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 6,
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   bottomSpacer: { height: SPACING.xxl },
 });

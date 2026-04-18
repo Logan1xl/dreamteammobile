@@ -61,7 +61,7 @@ export const COLORS = {
   // Gradients (pour expo-linear-gradient)
   primaryGradient: ['#1E3A5F', '#0F1E33'] as const,
   accentGradient: ['#C8A45D', '#B8943D'] as const,
-  successGradient: ['#2D9D78', '#1E7A5A'] as const,
+  successGradient: ['#10B981', '#059669'] as const,
   warningGradient: ['#E8A643', '#D09535'] as const,
   dangerGradient: ['#E85D5D', '#D04444'] as const,
   darkGradient: ['#1E293B', '#0F172A'] as const,

@@ -15,6 +15,7 @@ import Animated, {
   FadeInRight,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, RADIUS, FONT_SIZE, FONT_WEIGHT, SPACING } from '../../src/theme/theme';
 import { useAuthStore } from '../../src/store/useAuthStore';
@@ -24,6 +25,7 @@ import { MemberDashboardResponse, AdminDashboardResponse } from '../../src/types
 const { width } = Dimensions.get('window');
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
   
@@ -163,12 +165,16 @@ export default function DashboardScreen() {
 
         <View style={styles.shortcutsContainer}>
           {[
-            { label: 'Finances', icon: 'cash-outline', color: COLORS.primary },
-            { label: 'Tontines', icon: 'sync-outline', color: COLORS.success },
-            { label: 'Membres', icon: 'people-outline', color: COLORS.accentDark },
-            { label: 'Paramètres', icon: 'options-outline', color: COLORS.gray500 },
+            { label: 'Finances', icon: 'cash-outline', color: COLORS.primary, route: '/(tabs)/payments' },
+            { label: 'Tontines', icon: 'sync-outline', color: COLORS.success, route: '/(tabs)/tontines' },
+            { label: 'Épargne', icon: 'wallet-outline', color: COLORS.accentDark, route: '/(tabs)/savings' },
+            { label: 'Profil', icon: 'person-outline', color: COLORS.gray500, route: '/(tabs)/profile' },
           ].map((item, idx) => (
-            <TouchableOpacity key={idx} style={styles.shortcutItem}>
+            <TouchableOpacity 
+              key={idx} 
+              style={styles.shortcutItem}
+              onPress={() => router.push(item.route as any)}
+            >
               <View style={styles.shortcutIcon}>
                 <Ionicons name={item.icon as any} size={24} color={item.color} />
               </View>
@@ -231,10 +237,34 @@ const styles = StyleSheet.create({
   statIconContainer: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   statValue: { fontSize: 18, fontWeight: 'bold', color: COLORS.primaryDeep },
   statLabel: { fontSize: 10, color: COLORS.gray500, marginTop: 2 },
-  shortcutsContainer: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: SPACING.lg },
-  shortcutItem: { alignItems: 'center', width: 70 },
-  shortcutIcon: { width: 50, height: 50, borderRadius: 15, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', marginBottom: 8, ...SHADOWS.soft },
-  shortcutLabel: { fontSize: 10, fontWeight: 'bold', color: COLORS.gray500 },
+  shortcutsContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: SPACING.lg,
+    zIndex: 100 // Assure que les clics passent
+  },
+  shortcutItem: { 
+    alignItems: 'center', 
+    width: (width - SPACING.lg * 2 - 30) / 4 
+  },
+  shortcutIcon: { 
+    width: 60, 
+    height: 60, 
+    borderRadius: 20, 
+    backgroundColor: COLORS.white, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginBottom: 8, 
+    ...SHADOWS.soft,
+    borderWidth: 1,
+    borderColor: COLORS.gray100
+  },
+  shortcutLabel: { 
+    fontSize: 11, 
+    fontWeight: 'bold', 
+    color: COLORS.primaryDeep,
+    textAlign: 'center'
+  },
   infoCard: { marginHorizontal: SPACING.lg, backgroundColor: COLORS.white, borderRadius: 16, padding: 15, flexDirection: 'row', alignItems: 'center', ...SHADOWS.soft, marginTop: 20 },
   infoContent: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   infoIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.accentSoft, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
