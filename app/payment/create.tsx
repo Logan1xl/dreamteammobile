@@ -17,13 +17,14 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import Animated, {
   useSharedValue,
   withSpring,
   FadeIn,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
   CreditCard,
@@ -32,11 +33,11 @@ import {
   Building2,
   Check,
 } from 'lucide-react-native';
-import { createPayment } from '../../src/api/payments';
+import { createPayment, syncCampayPayment } from '../../src/api/payments';
 import { getMyMemberProfile } from '../../src/api/members';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import GradientButton from '../../src/components/common/GradientButton';
-import { PaymentType, PaymentMode } from '../../src/types';
+import { PaymentResponse, PaymentType, PaymentMode } from '../../src/types';
 import {
   COLORS,
   SPACING,
@@ -45,6 +46,7 @@ import {
   FONT_WEIGHT,
   SHADOWS,
 } from '../../src/theme/theme';
+import { showErrorAlert } from '../../src/utils/errorUtils';
 
 /** Options de type de paiement (Valeurs littérales car PaymentType est un Type Union) */
 const PAYMENT_TYPES: { value: PaymentType; label: string; icon: string; desc: string }[] = [
@@ -90,18 +92,27 @@ const PAYMENT_MODES: { value: PaymentMode; label: string; color: string; needsPh
 
 export default function CreatePaymentScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    type?: PaymentType;
+    amount?: string;
+    relatedEntityId?: string;
+    label?: string;
+  }>();
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
 
   // État du formulaire
-  const [selectedType, setSelectedType] = useState<PaymentType | null>(null);
+  const [selectedType, setSelectedType] = useState<PaymentType | null>((params.type as PaymentType) || null);
   const [selectedMode, setSelectedMode] = useState<PaymentMode | null>(null);
-  const [montant, setMontant] = useState('');
+  const [montant, setMontant] = useState(params.amount || '');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [lieu, setLieu] = useState('DISTANCE');
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(1);
+  const [checkingPayment, setCheckingPayment] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<PaymentResponse | null>(null);
+  const [step, setStep] = useState(params.type ? 2 : 1);
   const [resolvedMemberId, setResolvedMemberId] = useState<string | null>(user?.memberId || null);
+  const [relatedEntityId, setRelatedEntityId] = useState<string | undefined>(params.relatedEntityId);
 
   useEffect(() => {
     const fetchMemberId = async () => {
@@ -116,11 +127,20 @@ export default function CreatePaymentScreen() {
           updateUser({ memberId: res.data.id, memberMatricule: res.data.matricule });
         }
       } catch (e) {
-        console.log('Impossible de récupérer le memberId:', e);
+        showErrorAlert(e, 'Chargement du Profil');
       }
     };
     fetchMemberId();
   }, [user?.memberId]);
+
+  useEffect(() => {
+    if (params.type) {
+      setSelectedType(params.type as PaymentType);
+      setStep(2);
+    }
+    if (params.amount) setMontant(String(params.amount));
+    if (params.relatedEntityId) setRelatedEntityId(String(params.relatedEntityId));
+  }, [params.type, params.amount, params.relatedEntityId]);
 
   const stepScale = useSharedValue(1);
   const needsPhone = PAYMENT_MODES.find((m) => m.value === selectedMode)?.needsPhone || false;
@@ -147,27 +167,98 @@ export default function CreatePaymentScreen() {
       Alert.alert('Profil introuvable', 'Contactez l\'administrateur.');
       return;
     }
+    if ((selectedType === 'TONTINE' || selectedType === 'EPARGNE' || selectedType === 'SANCTION') && !relatedEntityId) {
+      Alert.alert(
+        'Paiement à rattacher',
+        'Ce type de paiement doit être lancé depuis la tontine, le compte épargne ou la sanction concernée.'
+      );
+      return;
+    }
 
     setLoading(true);
     try {
+      // Normalisation du téléphone (format international requis par CamPay)
+      let formattedPhone = phoneNumber.trim().replace(/\s+/g, '');
+      if (needsPhone && formattedPhone) {
+        if (!formattedPhone.startsWith('237') && !formattedPhone.startsWith('+237')) {
+          formattedPhone = '237' + formattedPhone;
+        }
+      }
+
       const response = await createPayment({
         memberId: resolvedMemberId,
         typePaiement: selectedType,
         modePaiement: selectedMode,
         lieu,
         montant: parseFloat(montant),
-        phoneNumber: needsPhone ? phoneNumber.trim() : undefined,
+        relatedEntityId,
+        phoneNumber: needsPhone ? formattedPhone : undefined,
       });
 
       if (response.success) {
-        Alert.alert('✅ Succès', 'Paiement créé !', [{ text: 'OK', onPress: () => router.back() }]);
+        const paymentId = response.data?.id;
+        const isMobileMoney = selectedMode === 'ORANGE_MONEY' || selectedMode === 'MTN_MOMO';
+
+        if (isMobileMoney && paymentId) {
+          if (response.data?.campayPaymentUrl) {
+            setPendingPayment(response.data);
+            await WebBrowser.openBrowserAsync(response.data.campayPaymentUrl);
+            return;
+          }
+
+          if (!response.data?.campayReference) {
+            Alert.alert(
+              'Paiement non lancé',
+              "La demande CamPay n'a pas pu être initialisée. Vérifiez le numéro et réessayez."
+            );
+            return;
+          }
+          setPendingPayment(response.data);
+        } else {
+          Alert.alert('Succès', 'Paiement créé !', [{ text: 'OK', onPress: () => router.back() }]);
+        }
       } else {
-        Alert.alert('Erreur', response.message);
+        showErrorAlert(new Error(response.message || 'Échec de la création'), 'Paiement');
       }
     } catch (error: any) {
-      Alert.alert('Erreur', 'Impossible de créer le paiement');
+      showErrorAlert(error, 'Paiement');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCheckPayment = async () => {
+    if (!pendingPayment?.id) return;
+    setCheckingPayment(true);
+    try {
+      const syncRes = await syncCampayPayment(pendingPayment.id);
+      if (syncRes.success && syncRes.data?.status === 'VALIDATED') {
+        Alert.alert('Paiement confirmé', 'Votre paiement a été validé avec succès.', [
+          { text: 'OK', onPress: () => router.replace('/(tabs)/payments' as any) },
+        ]);
+        return;
+      }
+      if (syncRes.success && syncRes.data?.status === 'REJECTED') {
+        Alert.alert('Paiement rejeté', syncRes.data.rejectionReason || 'Le paiement a été rejeté.');
+        return;
+      }
+      Alert.alert(
+        'Paiement en attente',
+        'CamPay attend encore votre validation. Vérifiez le prompt sur votre téléphone puis réessayez.'
+      );
+    } catch (error) {
+      showErrorAlert(error, 'Vérification Paiement');
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
+
+  const openCampayCheckout = async () => {
+    if (!pendingPayment?.campayPaymentUrl) return;
+    try {
+      await WebBrowser.openBrowserAsync(pendingPayment.campayPaymentUrl);
+    } catch (error) {
+      showErrorAlert(error, 'Ouverture CamPay');
     }
   };
 
@@ -247,6 +338,53 @@ export default function CreatePaymentScreen() {
           {step === 3 && (
             <Animated.View entering={FadeIn.duration(400)}>
               <Text style={styles.stepTitle}>Détails</Text>
+              {pendingPayment && (
+                <View style={styles.pendingBox}>
+                  <View style={styles.pendingIcon}>
+                    <Smartphone size={28} color={COLORS.primary} />
+                  </View>
+                  <Text style={styles.pendingTitle}>Paiement CamPay envoyé</Text>
+                  <Text style={styles.pendingText}>
+                    {pendingPayment.campayPaymentUrl
+                      ? "La fenêtre CamPay a été ouverte. Finalisez le paiement puis revenez ici."
+                      : "Une demande de validation a été envoyée sur le numéro Mobile Money saisi. Validez le prompt sur le téléphone, puis vérifiez le statut ici."}
+                  </Text>
+                  <Text style={styles.pendingReference}>
+                    Référence : {pendingPayment.campayReference}
+                  </Text>
+
+                  {pendingPayment.campayPaymentUrl && (
+                    <TouchableOpacity
+                      style={styles.checkoutAction}
+                      onPress={openCampayCheckout}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.checkoutActionText}>Ouvrir la fenêtre CamPay</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <GradientButton
+                    title="J'ai validé, vérifier"
+                    onPress={handleCheckPayment}
+                    loading={checkingPayment}
+                    size="lg"
+                    variant="success"
+                  />
+                  <TouchableOpacity
+                    style={styles.secondaryAction}
+                    onPress={() => router.replace('/(tabs)/payments' as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.secondaryActionText}>Voir mes paiements</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {params.label && (
+                <View style={styles.contextBox}>
+                  <Text style={styles.contextLabel}>Paiement lié à</Text>
+                  <Text style={styles.contextValue}>{params.label}</Text>
+                </View>
+              )}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Montant (FCFA)</Text>
                 <View style={styles.amountContainer}>
@@ -281,7 +419,7 @@ export default function CreatePaymentScreen() {
                   title="Finaliser"
                   onPress={handleSubmit}
                   loading={loading}
-                  disabled={!montant}
+                  disabled={!!pendingPayment || !montant}
                   size="lg"
                   variant="success"
                 />
@@ -308,6 +446,26 @@ const styles = StyleSheet.create({
   formWrapper: { flex: 1 },
   scrollContent: { padding: 20 },
   stepTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.gray800, marginBottom: 20 },
+  contextBox: {
+    backgroundColor: COLORS.primarySoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primaryAlpha(0.12),
+    padding: 14,
+    marginBottom: 18,
+  },
+  contextLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.primary,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  contextValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primaryDeep,
+  },
   optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   typeCard: { width: '48%', backgroundColor: COLORS.white, borderRadius: 15, padding: 15, alignItems: 'center', borderWidth: 1, borderColor: COLORS.gray200 },
   typeCardSelected: { borderColor: COLORS.primary, backgroundColor: COLORS.primarySoft },
@@ -329,5 +487,66 @@ const styles = StyleSheet.create({
   amountInput: { fontSize: 24, fontWeight: 'bold', color: COLORS.gray800 },
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, borderRadius: 12, borderWidth: 1, borderColor: COLORS.gray200, paddingHorizontal: 15, height: 55 },
   input: { flex: 1, fontSize: 16, color: COLORS.gray800 },
+  pendingBox: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 20,
+    alignItems: 'center',
+    ...SHADOWS.light,
+  },
+  pendingIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: COLORS.primarySoft,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  pendingTitle: {
+    fontSize: 18,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.gray800,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  pendingText: {
+    fontSize: 14,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: 10,
+  },
+  pendingReference: {
+    fontSize: 12,
+    color: COLORS.gray500,
+    marginBottom: 18,
+  },
+  checkoutAction: {
+    width: '100%',
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  checkoutActionText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  secondaryAction: {
+    minHeight: 46,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  secondaryActionText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.bold,
+  },
   buttonContainer: { marginTop: 30 }
 });

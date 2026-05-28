@@ -24,6 +24,7 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; label: string }>
 
   // Requêtes
   IN_PROGRESS: { bg: COLORS.infoLight, text: COLORS.info, label: 'En cours' },
+  ANSWERED: { bg: COLORS.successLight, text: COLORS.success, label: 'Répondu' },
   RESOLVED: { bg: COLORS.successLight, text: COLORS.success, label: 'Résolu' },
   CLOSED: { bg: COLORS.gray200, text: COLORS.gray600, label: 'Clôturé' },
 };

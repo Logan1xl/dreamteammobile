@@ -23,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, RADIUS, FONT_SIZE, FONT_WEIGHT, SPACING } from '../src/theme/theme';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { login } from '../src/api/auth';
+import { showErrorAlert } from '../src/utils/errorUtils';
 
 const { width, height } = Dimensions.get('window');
 
@@ -49,11 +50,10 @@ export default function LoginScreen() {
         await setLoginStore(response.data);
         router.replace('/(tabs)');
       } else {
-        Alert.alert('Échec', response.message || 'Identifiants incorrects');
+        showErrorAlert(new Error(response.message || 'Identifiants incorrects'), 'Échec de connexion');
       }
     } catch (error: any) {
-      console.error(error);
-      Alert.alert('Erreur', 'Problème de connexion au serveur');
+      showErrorAlert(error, 'Erreur de connexion');
     } finally {
       setIsLoading(false);
     }

@@ -39,6 +39,7 @@ import {
   FONT_SIZE,
   FONT_WEIGHT,
 } from '../../src/theme/theme';
+import { showErrorAlert } from '../../src/utils/errorUtils';
 
 export default function SavingsScreen() {
   const router = useRouter();
@@ -68,7 +69,7 @@ export default function SavingsScreen() {
           return;
         }
       } catch (e) {
-        console.log('Erreur profil membre:', e);
+        showErrorAlert(e, 'Mon Profil');
         setLoading(false);
         return;
       }
@@ -88,7 +89,7 @@ export default function SavingsScreen() {
       if (savingsRes.success) setSavings(savingsRes.data || []);
       if (summaryRes.success) setSummary(summaryRes.data);
     } catch (error) {
-      console.log('Erreur chargement épargne:', error);
+      showErrorAlert(error, 'Mon Épargne');
     } finally {
       setLoading(false);
     }
@@ -133,7 +134,7 @@ export default function SavingsScreen() {
             <View style={styles.headerStatItem}>
               <Wallet size={16} color={COLORS.whiteAlpha(0.8)} />
               <Text style={styles.headerStatText}>
-                {summary?.activeAccounts || 0} compte{(summary?.activeAccounts || 0) > 1 ? 's' : ''} actif{(summary?.activeAccounts || 0) > 1 ? 's' : ''}
+                {(summary?.activeAccounts ?? summary?.accountCount ?? 0)} compte{(summary?.activeAccounts ?? summary?.accountCount ?? 0) > 1 ? 's' : ''} actif{(summary?.activeAccounts ?? summary?.accountCount ?? 0) > 1 ? 's' : ''}
               </Text>
             </View>
           </View>
@@ -159,7 +160,14 @@ export default function SavingsScreen() {
             description="Vos comptes d'épargne apparaîtront ici. Contactez l'administrateur pour en ouvrir un."
           />
         ) : (
-          savings.map((account, index) => (
+          savings.map((account, index) => {
+            const accountBalance = Number(account.balance ?? account.solde ?? 0);
+            const totalBalance = Number(summary?.totalBalance ?? 0);
+            const progress = accountBalance > 0 && totalBalance > 0
+              ? Math.min(100, Math.round((accountBalance / totalBalance) * 100))
+              : 0;
+
+            return (
             <AnimatedCard key={account.id} index={index} variant="elevated">
               <View style={styles.accountHeader}>
                 <View style={styles.accountTitleRow}>
@@ -202,11 +210,11 @@ export default function SavingsScreen() {
               {/* Jauge de progression visuelle */}
               <View style={styles.progressContainer}>
                 <View style={styles.progressHeader}>
-                  <Text style={styles.progressLabel}>OBJECTIF VISÉ</Text>
-                  <Text style={styles.progressPercent}>75%</Text>
+                  <Text style={styles.progressLabel}>PART DE L'ÉPARGNE</Text>
+                  <Text style={styles.progressPercent}>{progress}%</Text>
                 </View>
                 <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: '75%', backgroundColor: COLORS.success }]} />
+                  <View style={[styles.progressBarFill, { width: `${progress}%`, backgroundColor: COLORS.success }]} />
                 </View>
               </View>
 
@@ -214,7 +222,14 @@ export default function SavingsScreen() {
               <View style={styles.accountActions}>
                 <TouchableOpacity 
                   style={[styles.actionButton, { backgroundColor: COLORS.successLight }]}
-                  onPress={() => router.push('/payment/create')}
+                  onPress={() => router.push({
+                    pathname: '/payment/create',
+                    params: {
+                      type: 'EPARGNE',
+                      relatedEntityId: account.id,
+                      label: account.denomination,
+                    },
+                  } as any)}
                 >
                   <ArrowDownLeft size={16} color={COLORS.success} />
                   <Text style={[styles.actionButtonText, { color: COLORS.success }]}>Déposer</Text>
@@ -222,14 +237,22 @@ export default function SavingsScreen() {
 
                 <TouchableOpacity 
                   style={[styles.actionButton, { backgroundColor: COLORS.dangerLight }]}
-                  onPress={() => router.push({ pathname: '/requests', params: { type: 'RETRAIT_EPARGNE', accountId: account.id } })}
+                  onPress={() => router.push({
+                    pathname: '/savings/withdraw',
+                    params: {
+                      accountId: account.id,
+                      accountName: account.denomination,
+                      balance: String(account.balance),
+                    },
+                  } as any)}
                 >
                   <ArrowUpRight size={16} color={COLORS.danger} />
                   <Text style={[styles.actionButtonText, { color: COLORS.danger }]}>Retirer</Text>
                 </TouchableOpacity>
               </View>
             </AnimatedCard>
-          ))
+            );
+          })
         )}
 
         <View style={styles.bottomSpacer} />

@@ -1,20 +1,19 @@
-/**
- * ============================================================
- * Types Globaux - Dream Team Mobile Frontend
- * Alignés avec le backend et le frontend web.
- * Supporte les alias pour une compatibilité maximale.
- * ==================== ENUMS ====================
- */
-
 export type Role = 'ADMIN' | 'MEMBER' | 'ASPIRANT';
 export type MemberStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED' | 'INACTIVE' | 'EXCLUDED';
 export type PaymentType = 'INSCRIPTION' | 'ASSURANCE' | 'SANCTION' | 'TONTINE' | 'EPARGNE' | 'AUTRE';
 export type PaymentMode = 'ESPECE' | 'ORANGE_MONEY' | 'MTN_MOMO' | 'BANQUE' | 'AUTRE';
 export type PaymentStatus = 'PENDING' | 'VALIDATED' | 'REJECTED' | 'CANCELLED';
-export type RequestStatus = 'PENDING' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' | 'REJECTED';
-export type TontineFrequency = 'HEBDOMADAIRE' | 'MENSUELLE' | 'TRIMESTRIELLE';
-
-// ==================== API ====================
+export type RequestStatus = 'PENDING' | 'IN_PROGRESS' | 'ANSWERED' | 'RESOLVED' | 'CLOSED' | 'REJECTED';
+export type RequestType = 'GENERAL' | 'INFORMATION' | 'COMPLAINT' | 'WITHDRAWAL_SAVINGS';
+export type SanctionType = 'RETARD' | 'ABSENCE' | 'NON_PAIEMENT' | 'AUTRE';
+export type TontineFrequency =
+  | 'HEBDOMADAIRE'
+  | 'BI-HEBDOMADAIRE'
+  | 'MENSUELLE'
+  | 'BIMENSUELLE'
+  | 'TRIMESTRIELLE'
+  | 'SEMESTRIELLE'
+  | 'ANNUELLE';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -27,15 +26,45 @@ export interface PageResponse<T> {
   content: T[];
   totalElements: number;
   totalPages: number;
+  size?: number;
+  number?: number;
+  first?: boolean;
+  last?: boolean;
+  empty?: boolean;
 }
-
-// ==================== AUTH ====================
 
 export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
+  tokenType?: string;
   expiresIn: number;
   user: UserResponse;
+}
+
+export interface LoginRequest {
+  emailOrPhone: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  nom: string;
+  prenoms: string;
+  telephone?: string;
+  role?: Role;
+}
+
+export interface UpdateProfileRequest {
+  nom?: string;
+  prenoms?: string;
+  phone?: string;
+}
+
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
 }
 
 export interface UserResponse {
@@ -51,13 +80,59 @@ export interface UserResponse {
   imageUrl?: string;
 }
 
-// ==================== DASHBOARD MEMBER ====================
+export interface MemberResponse {
+  id: string;
+  matricule?: string;
+  cni?: string;
+  nom: string;
+  prenoms: string;
+  fullName?: string;
+  telephone: string;
+  quartier?: string;
+  status: MemberStatus;
+  userId?: string;
+  associationId?: string;
+  inscriptionDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  insuranceSummary?: {
+    paidAmount: number;
+    totalAmount: number;
+    progressPercentage: number;
+    isComplete: boolean;
+  };
+  activeSubscriptions?: number;
+  pendingSanctions?: number;
+}
+
+export interface MemberFinancialStatusResponse {
+  memberId: string;
+  memberName: string;
+  matricule: string;
+  insuranceStatus?: {
+    paidAmount: number;
+    totalAmount: number;
+    remainingAmount: number;
+    progressPercentage: number;
+    isComplete: boolean;
+  };
+  pendingRequests: number;
+  answeredRequests: number;
+  totalSanctionsUnpaid: number;
+  totalSanctionsPaid: number;
+}
 
 export interface MemberDashboardResponse {
-  totalSavings: number;
-  activeSubscriptions: number;
-  insurancePaid: boolean;
-  pendingSanctions: number;
+  savingsBalance?: number;
+  totalSavings?: number;
+  insurancePaid?: number;
+  insuranceTotal?: number;
+  insuranceProgress?: number;
+  insuranceComplete?: boolean;
+  activeSubscriptions?: number;
+  unpaidSanctions?: number;
+  pendingSanctions?: number;
+  pendingRequests?: number;
   nextTontineDate?: string;
   nextTontineAmount?: number;
 }
@@ -72,23 +147,51 @@ export interface AdminDashboardResponse {
   totalSavings: number;
 }
 
-// ==================== TONTINES ====================
-
 export interface TontineResponse {
   id: string;
-  denomination?: string;
+  denomination: string;
   nom?: string;
   periodicite: TontineFrequency;
-  montantCotisation?: number;
+  dateDebut: string;
+  dateFin: string;
+  jourButoir: number;
+  montantCotisation: number;
   montantPart?: number;
+  sanctionNonBeneficiee: number;
+  sanctionDejaBeneficiee: number;
   isActive: boolean;
   isLocked: boolean;
-  totalSubscriptions?: number;
-  totalCotisationsReceived?: number;
-  dateDebut?: string;
+  associationId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  totalPeriods: number;
+  currentPeriod: number;
+  totalSubscriptions: number;
+  totalCotisationsExpected: number;
+  totalCotisationsReceived: number;
 }
 
-// ==================== PAIEMENTS ====================
+export interface SubscriptionResponse {
+  id: string;
+  memberId: string;
+  memberName: string;
+  memberMatricule?: string;
+  tontineId: string;
+  tontineName: string;
+  subscriptionName: string;
+  multiplier: number;
+  periodOrder?: number;
+  isActive: boolean;
+  hasBenefited: boolean;
+  benefitDate?: string;
+  createdAt?: string;
+}
+
+export interface JoinTontineRequest {
+  subscriptionName?: string;
+  multiplier?: number;
+  preferredOrder?: number;
+}
 
 export interface PaymentResponse {
   id: string;
@@ -101,24 +204,42 @@ export interface PaymentResponse {
   status: PaymentStatus;
   paymentDate?: string;
   dateCreation?: string;
+  createdAt?: string;
+  updatedAt?: string;
   paymentProof?: string;
   proofUrl?: string;
+  memberId?: string;
   memberName: string;
+  memberMatricule?: string;
+  phoneNumber?: string;
+  campayReference?: string;
+  campayPaymentUrl?: string;
   rejectionReason?: string;
 }
 
-// ==================== ÉPARGNE ====================
+export interface CreatePaymentRequest {
+  memberId: string;
+  typePaiement: PaymentType;
+  modePaiement: PaymentMode;
+  lieu: string;
+  montant: number;
+  paymentProof?: string;
+  relatedEntityId?: string;
+  phoneNumber?: string;
+}
+
 export enum SavingsType {
   SCOLAIRE = 'SCOLAIRE',
   PROJET = 'PROJET',
   ANNUELLE = 'ANNUELLE',
-  AUTRE = 'AUTRE'
+  AUTRE = 'AUTRE',
 }
 
 export interface SavingsResponse {
   id: string;
   memberId: string;
   memberName: string;
+  memberMatricule?: string;
   denomination: string;
   balance: number;
   solde?: number;
@@ -130,20 +251,80 @@ export interface SavingsResponse {
 }
 
 export interface SavingsSummaryResponse {
-  totalBalance: number;
-  activeAccounts: number;
   memberId: string;
+  totalBalance: number;
+  accountCount?: number;
+  totalAccounts?: number;
+  activeAccounts: number;
+  lastDepositAmount?: number;
+  lastDepositDate?: string;
 }
 
-// ==================== REQUÊTES ====================
+export interface SavingsTransactionResponse {
+  id: string;
+  accountId: string;
+  type: 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER' | 'PENALTY';
+  amount: number;
+  description?: string;
+  transactionDate: string;
+  reference?: string;
+}
+
+export interface SanctionResponse {
+  id: string;
+  memberId: string;
+  memberName: string;
+  memberMatricule?: string;
+  dateSanction: string;
+  motif: string;
+  type?: SanctionType;
+  montant: number;
+  montantPaye?: number;
+  remainingAmount?: number;
+  isPaid: boolean;
+  status?: string;
+  datePaiement?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateRequestRequest {
+  motif: string;
+  description: string;
+  solutionSouhaitee?: string;
+  requestType?: RequestType;
+  relatedEntityId?: string;
+  amount?: number;
+}
 
 export interface RequestResponse {
   id: string;
+  memberId?: string;
+  memberName?: string;
+  memberMatricule?: string;
+  dateRequete?: string;
   motif?: string;
   sujet?: string;
   description: string;
+  solutionSouhaitee?: string;
+  requestType?: RequestType;
+  relatedEntityId?: string;
+  amount?: number;
   status: RequestStatus;
   reponse?: string;
   reponseAdmin?: string;
+  respondedBy?: string;
+  respondedByName?: string;
+  responseDate?: string;
   createdAt?: string;
+}
+
+export interface NotificationResponse {
+  id: string;
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt?: string;
+  type?: string;
+  relatedEntityId?: string;
 }

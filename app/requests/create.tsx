@@ -12,6 +12,7 @@ import { ArrowLeft, MessageSquare, Send } from 'lucide-react-native';
 import { createRequest } from '../../src/api/requests';
 import GradientButton from '../../src/components/common/GradientButton';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../src/theme/theme';
+import { showErrorAlert } from '../../src/utils/errorUtils';
 
 export default function CreateRequestScreen() {
   const router = useRouter();
@@ -32,17 +33,20 @@ export default function CreateRequestScreen() {
 
   /** Soumission de la requête */
   const handleSubmit = async () => {
-    if (!validate()) return;
+    if (loading || !validate()) return;
     setLoading(true);
     try {
       const res = await createRequest({ motif: motif.trim(), description: description.trim(), solutionSouhaitee: solution.trim() || undefined });
       if (res.success) {
-        Alert.alert('✅ Requête soumise !', res.message || 'Votre requête a été envoyée.', [{ text: 'OK', onPress: () => router.back() }]);
+        setMotif('');
+        setDescription('');
+        setSolution('');
+        Alert.alert('Requête soumise', res.message || 'Votre requête a été soumise avec succès.', [{ text: 'OK', onPress: () => router.replace('/requests' as any) }]);
       } else {
-        Alert.alert('Erreur', res.message || 'Erreur lors de la soumission');
+        showErrorAlert(new Error(res.message || 'Erreur lors de la soumission'), 'Nouvelle Requête');
       }
     } catch (error: any) {
-      Alert.alert('Erreur', error?.response?.data?.message || 'Impossible de soumettre la requête');
+      showErrorAlert(error, 'Nouvelle Requête');
     } finally { setLoading(false); }
   };
 

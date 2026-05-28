@@ -7,7 +7,9 @@
 import apiClient from './client';
 import {
   ApiResponse,
+  JoinTontineRequest,
   PageResponse,
+  SubscriptionResponse,
   TontineResponse,
 } from '../types';
 
@@ -36,6 +38,17 @@ export const getActiveTontines = async (
 };
 
 /**
+ * Récupère les tontines ouvertes à l'adhésion
+ */
+export const getAvailableTontines = async (
+  page = 0,
+  size = 20
+): Promise<ApiResponse<PageResponse<TontineResponse>>> => {
+  const response = await apiClient.get(`${TONTINES_BASE}/available`, { params: { page, size } });
+  return response.data;
+};
+
+/**
  * Récupère les détails d'une tontine
  */
 export const getTontineById = async (id: string): Promise<ApiResponse<TontineResponse>> => {
@@ -48,8 +61,16 @@ export const getTontineById = async (id: string): Promise<ApiResponse<TontineRes
  */
 export const subscribeToTontine = async (
   tontineId: string,
-  memberId: string
-): Promise<ApiResponse<any>> => {
-  const response = await apiClient.post(`${TONTINES_BASE}/subscribe`, { tontineId, memberId });
+  data: JoinTontineRequest
+): Promise<ApiResponse<SubscriptionResponse>> => {
+  const response = await apiClient.post(`${TONTINES_BASE}/${tontineId}/join`, data);
+  return response.data;
+};
+
+/**
+ * Récupère les souscriptions du membre connecté
+ */
+export const getMySubscriptions = async (): Promise<ApiResponse<SubscriptionResponse[]>> => {
+  const response = await apiClient.get(`${TONTINES_BASE}/me/subscriptions`);
   return response.data;
 };

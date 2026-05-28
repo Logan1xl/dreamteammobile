@@ -24,6 +24,7 @@ import EmptyState from '../../src/components/common/EmptyState';
 import LoadingScreen from '../../src/components/common/LoadingScreen';
 import { SanctionResponse } from '../../src/types';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../src/theme/theme';
+import { showErrorAlert } from '../../src/utils/errorUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -40,7 +41,7 @@ export default function SanctionsScreen() {
       const res = await getMemberSanctions(user.memberId);
       if (res.success && res.data) setSanctions(res.data.content || []);
     } catch (e) { 
-      console.log('Err sanctions:', e); 
+      showErrorAlert(e, 'Mes Sanctions'); 
     } finally { 
       setLoading(false); 
     }
@@ -109,7 +110,13 @@ export default function SanctionsScreen() {
             description="Votre dossier est impeccable. Continuez à respecter les règles de l'association !" 
           />
         ) : (
-          sanctions.map((sn, i) => (
+          sanctions.map((sn, i) => {
+            const totalAmount = sn.montant ?? 0;
+            const paidAmount = sn.montantPaye ?? 0;
+            const remainingAmount = sn.remainingAmount ?? Math.max(totalAmount - paidAmount, 0);
+            const progress = totalAmount > 0 ? Math.min((paidAmount / totalAmount) * 100, 100) : 0;
+
+            return (
             <AnimatedCard key={sn.id} index={i} variant="elevated" style={styles.card}>
               <View style={styles.cardHeader}>
                 <View style={styles.titleColumn}>
@@ -125,7 +132,7 @@ export default function SanctionsScreen() {
                     <Text style={styles.sanctionDate}>{formatDate(sn.dateSanction)}</Text>
                   </View>
                 </View>
-                <View style={[styles.badge, { backgroundColor: sn.isPaid ? COLORS.successSoft : COLORS.dangerSoft }]}>
+                <View style={[styles.badge, { backgroundColor: sn.isPaid ? COLORS.successLight : COLORS.dangerLight }]}>
                   <Text style={[styles.badgeText, { color: sn.isPaid ? COLORS.successDark : COLORS.danger }]}>
                     {sn.isPaid ? 'Régularisée' : 'En attente'}
                   </Text>
@@ -135,12 +142,12 @@ export default function SanctionsScreen() {
               <View style={styles.detailsBox}>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Montant Initial</Text>
-                  <Text style={styles.detailValue}>{formatCurrency(sn.montant)}</Text>
+                  <Text style={styles.detailValue}>{formatCurrency(totalAmount)}</Text>
                 </View>
                 <View style={styles.separator} />
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Versé</Text>
-                  <Text style={[styles.detailValue, { color: COLORS.success }]}>{formatCurrency(sn.montantPaye)}</Text>
+                  <Text style={[styles.detailValue, { color: COLORS.success }]}>{formatCurrency(paidAmount)}</Text>
                 </View>
                 {!sn.isPaid && (
                   <>
@@ -148,7 +155,7 @@ export default function SanctionsScreen() {
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Reste à payer</Text>
                       <Text style={[styles.detailValue, { color: COLORS.danger, fontSize: 16 }]}>
-                        {formatCurrency(sn.remainingAmount)}
+                        {formatCurrency(remainingAmount)}
                       </Text>
                     </View>
                   </>
@@ -160,14 +167,36 @@ export default function SanctionsScreen() {
                   <View style={[
                     styles.progressBarFill, 
                     { 
-                      width: `${Math.min((sn.montantPaye / sn.montant) * 100, 100)}%`, 
+                      width: `${progress}%`, 
                       backgroundColor: sn.isPaid ? COLORS.success : COLORS.warning 
                     }
                   ]} />
                 </View>
               </View>
+
+              {!sn.isPaid && remainingAmount > 0 && (
+                <TouchableOpacity
+                  style={styles.payButton}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/payment/create',
+                      params: {
+                        type: 'SANCTION',
+                        amount: String(remainingAmount),
+                        relatedEntityId: sn.id,
+                        label: `Sanction - ${sn.motif}`,
+                      },
+                    } as any)
+                  }
+                >
+                  <Ionicons name="card-outline" size={18} color={COLORS.white} />
+                  <Text style={styles.payButtonText}>Payer cette sanction</Text>
+                </TouchableOpacity>
+              )}
             </AnimatedCard>
-          ))
+          );
+          })
         )}
         <View style={{ height: SPACING.xxl }} />
       </ScrollView>
@@ -279,4 +308,19 @@ const styles = StyleSheet.create({
   progressContainer: { marginTop: SPACING.lg },
   progressBarBg: { height: 8, backgroundColor: COLORS.gray100, borderRadius: 4, overflow: 'hidden' },
   progressBarFill: { height: '100%', borderRadius: 4 },
+  payButton: {
+    minHeight: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.danger,
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  payButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+  },
 });

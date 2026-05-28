@@ -73,6 +73,13 @@ export default function RootLayout() {
           options={{ animation: 'slide_from_right' }}
         />
         <Stack.Screen
+          name="savings/withdraw"
+          options={{
+            animation: 'slide_from_bottom',
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
           name="requests/index"
           options={{ animation: 'slide_from_right' }}
         />

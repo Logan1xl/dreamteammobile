@@ -8,9 +8,11 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
 
-// URL de base de l'API - Tunnel ngrok vers le backend local
+// URL de base de l'API - configurable via EXPO_PUBLIC_API_URL
 // Le backend tourne sur localhost:8084 et est exposé via ngrok
-export const BASE_URL = 'https://polytomous-kristi-overimpressibly.ngrok-free.dev/api/v1';
+export const BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  'https://polytomous-kristi-overimpressibly.ngrok-free.dev/api/v1';
 
 /**
  * Instance Axios pré-configurée avec timeout et headers par défaut
@@ -50,40 +52,43 @@ apiClient.interceptors.request.use(
  * en tentant un refresh automatique du token, puis déconnecte
  * l'utilisateur si le refresh échoue
  */
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
+ apiClient.interceptors.response.use(
+   (response) => response,
+   async (error) => {
+     const originalRequest = error.config;
+ 
+     // Si 401 et qu'on n'a pas déjà tenté un refresh
+     if (error.response?.status === 401 && !originalRequest._retry) {
+       originalRequest._retry = true;
+ 
+       try {
+         const refreshToken = useAuthStore.getState().refreshToken;
+         if (refreshToken) {
+           // Tenter le refresh du token
+           const response = await axios.post(`${BASE_URL}/auth/refresh`, null, {
+             params: { refreshToken },
+           });
+ 
+           if (response.data?.success) {
+             const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+             useAuthStore.getState().setTokens(accessToken, newRefreshToken);
+ 
+             // Rejouer la requête originale avec le nouveau token
+             originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+             return apiClient(originalRequest);
+           }
+         }
+       } catch (refreshError) {
+         // Le refresh a échoué, déconnexion forcée
+         useAuthStore.getState().logout();
+       }
+     }
+ 
+     // On pourrait ici transformer l'erreur avant de la rejeter
+     // Mais pour l'instant on se contente de la passer
+     return Promise.reject(error);
+   }
+ );
 
-    // Si 401 et qu'on n'a pas déjà tenté un refresh
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      try {
-        const refreshToken = useAuthStore.getState().refreshToken;
-        if (refreshToken) {
-          // Tenter le refresh du token
-          const response = await axios.post(`${BASE_URL}/auth/refresh`, null, {
-            params: { refreshToken },
-          });
-
-          if (response.data?.success) {
-            const { accessToken, refreshToken: newRefreshToken } = response.data.data;
-            useAuthStore.getState().setTokens(accessToken, newRefreshToken);
-
-            // Rejouer la requête originale avec le nouveau token
-            originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-            return apiClient(originalRequest);
-          }
-        }
-      } catch (refreshError) {
-        // Le refresh a échoué, déconnexion forcée
-        useAuthStore.getState().logout();
-      }
-    }
-
-    return Promise.reject(error);
-  }
-);
 
 export default apiClient;

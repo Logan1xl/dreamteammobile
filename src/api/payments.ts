@@ -10,6 +10,7 @@ import {
   PageResponse,
   PaymentResponse,
   CreatePaymentRequest,
+  PaymentMode,
 } from '../types';
 
 const PAYMENTS_BASE = '/payments';
@@ -21,6 +22,19 @@ export const createPayment = async (
   data: CreatePaymentRequest
 ): Promise<ApiResponse<PaymentResponse>> => {
   const response = await apiClient.post(PAYMENTS_BASE, data);
+  return response.data;
+};
+
+/**
+ * Lance le paiement CamPay des frais d'adhésion pendant l'inscription.
+ */
+export const initiateMembershipPayment = async (
+  phoneNumber: string,
+  mode: PaymentMode
+): Promise<ApiResponse<PaymentResponse>> => {
+  const response = await apiClient.post(`${PAYMENTS_BASE}/membership/initiate`, null, {
+    params: { phoneNumber, mode },
+  });
   return response.data;
 };
 
@@ -65,5 +79,15 @@ export const getPendingPayments = async (
   size = 20
 ): Promise<ApiResponse<PageResponse<PaymentResponse>>> => {
   const response = await apiClient.get(`${PAYMENTS_BASE}/pending`, { params: { page, size } });
+  return response.data;
+};
+
+/**
+ * Synchronise le statut CamPay d'un paiement en attente (validation automatique si payé)
+ */
+export const syncCampayPayment = async (
+  paymentId: string
+): Promise<ApiResponse<PaymentResponse>> => {
+  const response = await apiClient.post(`${PAYMENTS_BASE}/${paymentId}/sync-campay`);
   return response.data;
 };

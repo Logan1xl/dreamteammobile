@@ -12,4 +12,5 @@ export * as savingsApi from './savings';
 export * as sanctionsApi from './sanctions';
 export * as requestsApi from './requests';
 export * as membersApi from './members';
+export * as notificationsApi from './notifications';
 export { default as apiClient } from './client';

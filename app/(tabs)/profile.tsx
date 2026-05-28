@@ -14,12 +14,16 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store/useAuthStore';
-import { logout as logoutApi } from '../../src/api/auth';
+import { changePassword, logout as logoutApi } from '../../src/api/auth';
+import { showErrorAlert } from '../../src/utils/errorUtils';
 import {
   COLORS,
   SPACING,
@@ -38,6 +42,14 @@ export default function ProfileScreen() {
 
   const isAdminValue = isAdminFunc();
   const [notifications, setNotifications] = useState(true);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [showPasswords, setShowPasswords] = useState(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -60,6 +72,47 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const resetPasswordForm = () => {
+    setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    setShowPasswords(false);
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      Alert.alert('Champs requis', 'Veuillez remplir tous les champs.');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      Alert.alert('Confirmation incorrecte', 'Les nouveaux mots de passe ne correspondent pas.');
+      return;
+    }
+
+    if (!/^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z]).{8,}$/.test(passwordForm.newPassword)) {
+      Alert.alert(
+        'Mot de passe faible',
+        'Le nouveau mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule et un chiffre.'
+      );
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const response = await changePassword(passwordForm);
+      if (response.success) {
+        setShowPasswordModal(false);
+        resetPasswordForm();
+        Alert.alert('Mot de passe modifié', 'Votre mot de passe a été mis à jour avec succès.');
+      } else {
+        Alert.alert('Erreur', response.message || 'Impossible de modifier le mot de passe.');
+      }
+    } catch (error) {
+      showErrorAlert(error, 'Mot de passe');
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   const renderMenuItem = (
@@ -162,9 +215,19 @@ export default function ProfileScreen() {
           <View style={styles.separator} />
 
           {renderMenuItem(
+            'chatbubbles-outline',
+            'Mes requêtes',
+            () => router.push('/requests' as any),
+            undefined,
+            COLORS.info
+          )}
+
+          <View style={styles.separator} />
+
+          {renderMenuItem(
             'lock-closed-outline',
             'Changer le mot de passe',
-            () => Alert.alert('Info', 'Fonctionnalité à venir'),
+            () => setShowPasswordModal(true),
             undefined,
             COLORS.warning
           )}
@@ -194,6 +257,107 @@ export default function ProfileScreen() {
         <Text style={styles.version}>Dream Team v1.0.0</Text>
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      <Modal
+        visible={showPasswordModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowPasswordModal(false);
+          resetPasswordForm();
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIcon}>
+                <Ionicons name="lock-closed-outline" size={22} color={COLORS.warning} />
+              </View>
+              <View style={styles.modalTitleGroup}>
+                <Text style={styles.modalTitle}>Changer le mot de passe</Text>
+                <Text style={styles.modalSubtitle}>Sécurisez votre compte Dream Team</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowPasswordModal(false);
+                  resetPasswordForm();
+                }}
+                style={styles.modalClose}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={20} color={COLORS.gray500} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.passwordInputGroup}>
+              <Text style={styles.passwordLabel}>Mot de passe actuel</Text>
+              <TextInput
+                style={styles.passwordInput}
+                value={passwordForm.oldPassword}
+                onChangeText={(value) => setPasswordForm((prev) => ({ ...prev, oldPassword: value }))}
+                secureTextEntry={!showPasswords}
+                placeholder="Votre mot de passe actuel"
+                placeholderTextColor={COLORS.gray400}
+              />
+            </View>
+
+            <View style={styles.passwordInputGroup}>
+              <Text style={styles.passwordLabel}>Nouveau mot de passe</Text>
+              <TextInput
+                style={styles.passwordInput}
+                value={passwordForm.newPassword}
+                onChangeText={(value) => setPasswordForm((prev) => ({ ...prev, newPassword: value }))}
+                secureTextEntry={!showPasswords}
+                placeholder="8 caractères minimum"
+                placeholderTextColor={COLORS.gray400}
+              />
+            </View>
+
+            <View style={styles.passwordInputGroup}>
+              <Text style={styles.passwordLabel}>Confirmation</Text>
+              <TextInput
+                style={styles.passwordInput}
+                value={passwordForm.confirmPassword}
+                onChangeText={(value) => setPasswordForm((prev) => ({ ...prev, confirmPassword: value }))}
+                secureTextEntry={!showPasswords}
+                placeholder="Répétez le nouveau mot de passe"
+                placeholderTextColor={COLORS.gray400}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={styles.showPasswordRow}
+              onPress={() => setShowPasswords((value) => !value)}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={showPasswords ? 'eye-off-outline' : 'eye-outline'}
+                size={18}
+                color={COLORS.primary}
+              />
+              <Text style={styles.showPasswordText}>
+                {showPasswords ? 'Masquer les mots de passe' : 'Afficher les mots de passe'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.savePasswordButton, changingPassword && { opacity: 0.7 }]}
+              onPress={handleChangePassword}
+              disabled={changingPassword}
+              activeOpacity={0.85}
+            >
+              {changingPassword ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.white} />
+                  <Text style={styles.savePasswordText}>Mettre à jour</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -253,4 +417,78 @@ const styles = StyleSheet.create({
   logoutRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 10 },
   logoutText: { fontSize: 16, fontWeight: 'bold', color: COLORS.danger },
   version: { textAlign: 'center', fontSize: 10, color: COLORS.gray400, marginTop: 10 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: 20,
+    ...SHADOWS.heavy,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 18,
+  },
+  modalIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: COLORS.warningLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitleGroup: { flex: 1 },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: COLORS.primaryDeep },
+  modalSubtitle: { fontSize: 11, color: COLORS.gray500, marginTop: 2 },
+  modalClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: COLORS.gray50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  passwordInputGroup: { marginBottom: 12 },
+  passwordLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.gray500,
+    textTransform: 'uppercase',
+    marginBottom: 7,
+  },
+  passwordInput: {
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.gray100,
+    backgroundColor: COLORS.gray50,
+    paddingHorizontal: 14,
+    color: COLORS.primaryDeep,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  showPasswordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 40,
+    marginBottom: 12,
+  },
+  showPasswordText: { fontSize: 12, color: COLORS.primary, fontWeight: '700' },
+  savePasswordButton: {
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  savePasswordText: { color: COLORS.white, fontSize: 15, fontWeight: '800' },
 });

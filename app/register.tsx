@@ -20,9 +20,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, RADIUS, FONT_SIZE, FONT_WEIGHT, SPACING } from '../src/theme/theme';
 import * as ImagePicker from 'expo-image-picker';
+import * as WebBrowser from 'expo-web-browser';
 import { submitApplication } from '../src/api/members';
+import { initiateMembershipPayment } from '../src/api/payments';
 import { PaymentMode } from '../src/types';
 import apiClient from '../src/api/client';
+import { showErrorAlert } from '../src/utils/errorUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -38,7 +41,8 @@ export default function RegisterScreen() {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<'IDLE' | 'PENDING' | 'SUCCESS' | 'ERROR'>('IDLE');
+  const [paymentStatus, setPaymentStatus] = useState<'IDLE' | 'PENDING' | 'LINK_READY' | 'SUCCESS' | 'ERROR'>('IDLE');
+  const [membershipPaymentUrl, setMembershipPaymentUrl] = useState<string | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   
   const [form, setForm] = useState({
@@ -71,14 +75,11 @@ export default function RegisterScreen() {
 
   const simulateOCRExtraction = async (uri: string) => {
     setIsExtracting(true);
-    // Simulation d'un délai d'analyse d'image (OCR)
     setTimeout(() => {
-      // Génération d'un ID de transaction fictif extrait "magiquement"
-      const fakeTxId = 'TX' + Math.random().toString(36).substr(2, 9).toUpperCase();
-      setForm(prev => ({ ...prev, transactionId: fakeTxId, paymentAmount: '25' }));
+      setForm(prev => ({ ...prev, paymentAmount: prev.paymentAmount || '25' }));
       setIsExtracting(false);
-      setPaymentStatus('SUCCESS'); // Le succès est confirmé par l'image
-      Alert.alert('Analyse Réussie', `ID de transaction détecté : ${fakeTxId}. Vous pouvez maintenant soumettre votre candidature.`);
+      setPaymentStatus('SUCCESS');
+      Alert.alert('Preuve ajoutée', 'La capture a été ajoutée. Vous pouvez maintenant soumettre votre candidature.');
     }, 2000);
   };
 
@@ -89,26 +90,57 @@ export default function RegisterScreen() {
         return;
     }
 
-    setForm({ ...form, modePaiement: mode });
+    setForm(prev => ({ ...prev, modePaiement: mode }));
     setPaymentStatus('PENDING');
+    setMembershipPaymentUrl(null);
+
+    // Normalisation du téléphone (format international requis par CamPay)
+    let formattedPhone = form.telephone.replace(/\s+/g, '');
+    if (!formattedPhone.startsWith('237') && !formattedPhone.startsWith('+237')) {
+        formattedPhone = '237' + formattedPhone;
+    }
 
     try {
-        const res = await apiClient.post('/payments/membership/initiate', null, {
-            params: { phoneNumber: form.telephone, mode }
-        });
+        const res = await initiateMembershipPayment(formattedPhone, mode);
 
-        if (res.data.success) {
-            // On ne simule plus le succès ici.
-            // On informe juste l'utilisateur que la requête est envoyée.
-            Alert.alert('Paiement Initié', 'Veuillez valider le paiement sur votre téléphone. Une fois terminé, prenez une capture d\'écran du succès.');
+        if (res.success && res.data) {
+            const paymentUrl = res.data.campayPaymentUrl || null;
+            const reference = res.data.campayReference || res.data.id || '';
+
+            setMembershipPaymentUrl(paymentUrl);
+            setForm(prev => ({
+                ...prev,
+                modePaiement: mode,
+                transactionId: reference || prev.transactionId,
+                paymentAmount: '25',
+            }));
+            setPaymentStatus('LINK_READY');
+
+            if (paymentUrl) {
+                await WebBrowser.openBrowserAsync(paymentUrl);
+                return;
+            }
+
+            Alert.alert(
+                'Paiement lancé',
+                'La demande CamPay a été créée. Si la fenêtre ne s’ouvre pas, vérifiez votre connexion puis réessayez.'
+            );
         } else {
             setPaymentStatus('ERROR');
-            Alert.alert('Erreur', 'Échec de l\'initiation du paiement.');
+            showErrorAlert(new Error(res.message || 'Échec de l\'initiation du paiement.'), 'Paiement');
         }
     } catch (error) {
-        console.error('Payment initiation error:', error);
         setPaymentStatus('ERROR');
-        Alert.alert('Erreur', 'Impossible de contacter le service de paiement.');
+        showErrorAlert(error, 'Paiement');
+    }
+  };
+
+  const reopenMembershipPayment = async () => {
+    if (!membershipPaymentUrl) return;
+    try {
+      await WebBrowser.openBrowserAsync(membershipPaymentUrl);
+    } catch (error) {
+      showErrorAlert(error, 'Ouverture CamPay');
     }
   };
 
@@ -188,11 +220,10 @@ export default function RegisterScreen() {
           [{ text: 'Compris', onPress: () => router.replace('/login') }]
         );
       } else {
-        Alert.alert('Erreur', res.message || 'Échec de la soumission');
+        showErrorAlert(new Error(res.message || 'Échec de la soumission'), 'Inscription');
       }
     } catch (e: any) {
-      console.error('Registration error:', e);
-      Alert.alert('Erreur', e.message || 'Une erreur est survenue lors de l\'inscription');
+      showErrorAlert(e, 'Inscription');
     } finally {
       setIsLoading(false);
     }
@@ -437,9 +468,31 @@ export default function RegisterScreen() {
                 {paymentStatus === 'PENDING' && (
                     <View style={styles.paymentStatusCard}>
                         <ActivityIndicator color={COLORS.accent} size="large" />
-                        <Text style={styles.statusText}>Initiation du paiement sur votre téléphone...</Text>
-                        <Text style={styles.subStatusText}>Veuillez valider le prompt USSD qui va apparaître.</Text>
+                        <Text style={styles.statusText}>Préparation de la fenêtre CamPay...</Text>
+                        <Text style={styles.subStatusText}>Nous ouvrons la page sécurisée de paiement.</Text>
                     </View>
+                )}
+
+                {paymentStatus === 'LINK_READY' && (
+                    <Animated.View entering={FadeInRight} style={styles.paymentStatusCard}>
+                        <View style={styles.paymentLinkIcon}>
+                            <Ionicons name="open-outline" size={26} color={COLORS.primary} />
+                        </View>
+                        <Text style={styles.statusText}>Fenêtre CamPay ouverte</Text>
+                        <Text style={styles.subStatusText}>
+                            Finalisez le paiement, revenez ici, puis ajoutez la capture de confirmation.
+                        </Text>
+                        {membershipPaymentUrl && (
+                            <TouchableOpacity
+                                style={styles.reopenPaymentButton}
+                                onPress={reopenMembershipPayment}
+                                activeOpacity={0.85}
+                            >
+                                <Ionicons name="open-outline" size={18} color={COLORS.white} />
+                                <Text style={styles.reopenPaymentText}>Rouvrir CamPay</Text>
+                            </TouchableOpacity>
+                        )}
+                    </Animated.View>
                 )}
 
                 {paymentStatus === 'SUCCESS' && (
@@ -648,6 +701,29 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 14, fontWeight: '700', color: COLORS.primaryDeep, marginTop: 12, textAlign: 'center' },
   subStatusText: { fontSize: 12, color: COLORS.gray500, marginTop: 4, textAlign: 'center' },
+  paymentLinkIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reopenPaymentButton: {
+    marginTop: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reopenPaymentText: {
+    color: COLORS.white,
+    fontWeight: '800',
+    fontSize: 13,
+  },
 
   successCard: {
     backgroundColor: COLORS.successLight,

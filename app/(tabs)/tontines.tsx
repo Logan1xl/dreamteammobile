@@ -22,13 +22,15 @@ import {
   TrendingUp,
   Lock,
   ChevronRight,
+  UserPlus,
+  CreditCard,
 } from 'lucide-react-native';
-import { getActiveTontines } from '../../src/api/tontines';
+import { getAvailableTontines, getMySubscriptions } from '../../src/api/tontines';
 import AnimatedCard from '../../src/components/common/AnimatedCard';
 import StatusBadge from '../../src/components/common/StatusBadge';
 import EmptyState from '../../src/components/common/EmptyState';
 import LoadingScreen from '../../src/components/common/LoadingScreen';
-import { TontineResponse, TontineFrequency } from '../../src/types';
+import { SubscriptionResponse, TontineResponse, TontineFrequency } from '../../src/types';
 import {
   COLORS,
   SPACING,
@@ -37,10 +39,12 @@ import {
   FONT_WEIGHT,
   SHADOWS,
 } from '../../src/theme/theme';
+import { showErrorAlert } from '../../src/utils/errorUtils';
 
 export default function TontinesScreen() {
   const router = useRouter();
   const [tontines, setTontines] = useState<TontineResponse[]>([]);
+  const [subscriptions, setSubscriptions] = useState<SubscriptionResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -49,12 +53,18 @@ export default function TontinesScreen() {
    */
   const loadTontines = useCallback(async () => {
     try {
-      const response = await getActiveTontines();
-      if (response.success && response.data) {
-        setTontines(response.data.content || []);
+      const [tontinesResponse, subscriptionsResponse] = await Promise.all([
+        getAvailableTontines(),
+        getMySubscriptions(),
+      ]);
+      if (tontinesResponse.success && tontinesResponse.data) {
+        setTontines(tontinesResponse.data.content || []);
+      }
+      if (subscriptionsResponse.success && subscriptionsResponse.data) {
+        setSubscriptions(subscriptionsResponse.data.filter((sub) => sub.isActive));
       }
     } catch (error) {
-      console.log('Erreur chargement tontines:', error);
+      showErrorAlert(error, 'Mes Tontines');
     } finally {
       setLoading(false);
     }
@@ -82,10 +92,33 @@ export default function TontinesScreen() {
   const getFrequencyLabel = (freq: TontineFrequency): string => {
     const map: Record<TontineFrequency, string> = {
       HEBDOMADAIRE: 'Hebdomadaire',
+      'BI-HEBDOMADAIRE': 'Bi-hebdomadaire',
       MENSUELLE: 'Mensuelle',
+      BIMENSUELLE: 'Bimensuelle',
       TRIMESTRIELLE: 'Trimestrielle',
+      SEMESTRIELLE: 'Semestrielle',
+      ANNUELLE: 'Annuelle',
     };
     return map[freq] || freq;
+  };
+
+  const getActiveSubscription = (tontineId: string) =>
+    subscriptions.find((sub) => sub.tontineId === tontineId && sub.isActive);
+
+  const goToContributionPayment = (
+    tontine: TontineResponse,
+    subscription: SubscriptionResponse
+  ) => {
+    const amount = (tontine.montantCotisation || 0) * Number(subscription.multiplier || 1);
+    router.push({
+      pathname: '/payment/create',
+      params: {
+        type: 'TONTINE',
+        amount: String(amount),
+        relatedEntityId: subscription.id,
+        label: `${tontine.denomination} - ${subscription.subscriptionName}`,
+      },
+    } as any);
   };
 
   if (loading) return <LoadingScreen message="Chargement des tontines..." />;
@@ -102,9 +135,9 @@ export default function TontinesScreen() {
         <View style={[styles.bgCircle, styles.bgCircle1]} />
         <View style={styles.headerContent}>
           <Repeat size={28} color={COLORS.white} />
-          <Text style={styles.headerTitle}>Mes Tontines</Text>
+          <Text style={styles.headerTitle}>Tontines disponibles</Text>
           <Text style={styles.headerSub}>
-            {tontines.length} tontine{tontines.length > 1 ? 's' : ''} active{tontines.length > 1 ? 's' : ''}
+            {tontines.length} tontine{tontines.length > 1 ? 's' : ''} ouverte{tontines.length > 1 ? 's' : ''}
           </Text>
         </View>
       </LinearGradient>
@@ -124,11 +157,14 @@ export default function TontinesScreen() {
         {tontines.length === 0 ? (
           <EmptyState
             icon={<Repeat size={40} color={COLORS.gray400} />}
-            title="Aucune tontine active"
-            description="Les tontines actives de votre association apparaîtront ici."
+            title="Aucune tontine disponible"
+            description="Les tontines ouvertes à l'adhésion apparaîtront ici."
           />
         ) : (
-          tontines.map((tontine, index) => (
+          tontines.map((tontine, index) => {
+            const activeSubscription = getActiveSubscription(tontine.id);
+
+            return (
             <AnimatedCard key={tontine.id} index={index} variant="elevated">
               <TouchableOpacity
                 onPress={() => router.push(`/tontine/${tontine.id}`)}
@@ -208,8 +244,40 @@ export default function TontinesScreen() {
                   </Text>
                 </View>
               </TouchableOpacity>
+              <View style={styles.cardButtons}>
+                <TouchableOpacity
+                  style={activeSubscription ? styles.payButton : styles.joinButton}
+                  onPress={() =>
+                    activeSubscription
+                      ? goToContributionPayment(tontine, activeSubscription)
+                      : router.push({
+                          pathname: '/tontine/[id]',
+                          params: { id: tontine.id, join: '1' },
+                        } as any)
+                  }
+                  activeOpacity={0.85}
+                >
+                  {activeSubscription ? (
+                    <CreditCard size={16} color={COLORS.white} />
+                  ) : (
+                    <UserPlus size={16} color={COLORS.white} />
+                  )}
+                  <Text style={styles.joinButtonText}>
+                    {activeSubscription ? 'Payer' : 'Adhérer'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.detailsButton}
+                  onPress={() => router.push(`/tontine/${tontine.id}`)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.detailsButtonText}>Détails</Text>
+                  <ChevronRight size={16} color={COLORS.success} />
+                </TouchableOpacity>
+              </View>
             </AnimatedCard>
-          ))
+          );
+          })
         )}
 
         <View style={styles.bottomSpacer} />
@@ -336,6 +404,54 @@ const styles = StyleSheet.create({
     color: COLORS.gray400,
     marginTop: SPACING.xs,
     textAlign: 'right',
+  },
+  cardButtons: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+  },
+  joinButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.success,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  payButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  joinButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  detailsButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.successLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  detailsButtonText: {
+    color: COLORS.success,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
   },
   bottomSpacer: { height: SPACING.xxl },
 });

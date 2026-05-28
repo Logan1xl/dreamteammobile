@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getMemberRequests } from '../../src/api/requests';
+import { getMyMemberProfile } from '../../src/api/members';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import AnimatedCard from '../../src/components/common/AnimatedCard';
 import StatusBadge from '../../src/components/common/StatusBadge';
@@ -25,27 +26,43 @@ import EmptyState from '../../src/components/common/EmptyState';
 import LoadingScreen from '../../src/components/common/LoadingScreen';
 import { RequestResponse } from '../../src/types';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../src/theme/theme';
+import { showErrorAlert } from '../../src/utils/errorUtils';
 
 const { width } = Dimensions.get('window');
 
 export default function RequestsScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const [requests, setRequests] = useState<RequestResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadRequests = useCallback(async () => {
-    if (!user?.memberId) { setLoading(false); return; }
+    let memberId = user?.memberId;
+    if (!memberId) {
+      try {
+        const profile = await getMyMemberProfile();
+        if (profile.success && profile.data?.id) {
+          memberId = profile.data.id;
+          updateUser({ memberId: profile.data.id, memberMatricule: profile.data.matricule });
+        }
+      } catch (e) {
+        showErrorAlert(e, 'Mon Profil');
+        setLoading(false);
+        return;
+      }
+    }
+    if (!memberId) { setLoading(false); return; }
     try {
-      const res = await getMemberRequests(user.memberId);
+      const res = await getMemberRequests(memberId);
       if (res.success && res.data) setRequests(res.data.content || []);
     } catch (e) { 
-      console.log('Err requêtes:', e); 
+      showErrorAlert(e, 'Mes Requêtes'); 
     } finally { 
       setLoading(false); 
     }
-  }, [user?.memberId]);
+  }, [user?.memberId, updateUser]);
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
 
@@ -116,7 +133,7 @@ export default function RequestsScreen() {
               <View style={styles.cardHeader}>
                 <View style={styles.titleColumn}>
                   <Text style={styles.requestMotif} numberOfLines={1}>{req.motif}</Text>
-                  <Text style={styles.requestDate}>{formatDate(req.dateRequete || req.createdAt)}</Text>
+                  <Text style={styles.requestDate}>{formatDate(req.dateRequete || req.createdAt || '')}</Text>
                 </View>
                 <StatusBadge status={req.status} size="sm" />
               </View>
@@ -200,8 +217,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: RADIUS.xl,
     marginBottom: SPACING.xl,
-    borderLeftWidth: 5,
-    borderLeftColor: COLORS.accent
   },
   newActionContent: { 
     flexDirection: 'row', 

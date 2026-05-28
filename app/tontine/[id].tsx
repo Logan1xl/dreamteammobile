@@ -14,6 +14,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  TextInput,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -33,12 +34,16 @@ import {
   TrendingUp,
   Banknote,
   AlertTriangle,
+  UserPlus,
+  CreditCard,
   CheckCircle,
 } from 'lucide-react-native';
-import { getTontineById } from '../../src/api/tontines';
+import { getMySubscriptions, getTontineById, subscribeToTontine } from '../../src/api/tontines';
 import AnimatedCard from '../../src/components/common/AnimatedCard';
+import GradientButton from '../../src/components/common/GradientButton';
 import LoadingScreen from '../../src/components/common/LoadingScreen';
-import { TontineResponse, TontineFrequency } from '../../src/types';
+import { SubscriptionResponse, TontineResponse, TontineFrequency } from '../../src/types';
+import { showErrorAlert } from '../../src/utils/errorUtils';
 import {
   COLORS,
   SPACING,
@@ -49,12 +54,16 @@ import {
 } from '../../src/theme/theme';
 
 export default function TontineDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, join } = useLocalSearchParams<{ id: string; join?: string }>();
   const router = useRouter();
 
   const [tontine, setTontine] = useState<TontineResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [subscriptionName, setSubscriptionName] = useState('');
+  const [multiplier, setMultiplier] = useState('1');
+  const [currentSubscription, setCurrentSubscription] = useState<SubscriptionResponse | null>(null);
+  const [joining, setJoining] = useState(false);
 
   // Animation de la barre de collecte
   const collectProgress = useSharedValue(0);
@@ -65,7 +74,10 @@ export default function TontineDetailScreen() {
   const loadTontine = useCallback(async () => {
     if (!id) return;
     try {
-      const response = await getTontineById(id);
+      const [response, subscriptionsResponse] = await Promise.all([
+        getTontineById(id),
+        getMySubscriptions(),
+      ]);
       if (response.success && response.data) {
         setTontine(response.data);
         // Animer la progression
@@ -83,8 +95,14 @@ export default function TontineDetailScreen() {
           withSpring(progress, { damping: 20, stiffness: 80 })
         );
       }
+      if (subscriptionsResponse.success && subscriptionsResponse.data) {
+        const activeSubscription = subscriptionsResponse.data.find(
+          (sub) => sub.tontineId === id && sub.isActive
+        );
+        setCurrentSubscription(activeSubscription || null);
+      }
     } catch (error) {
-      console.log('Erreur détail tontine:', error);
+      showErrorAlert(error, 'Détail Tontine');
     } finally {
       setLoading(false);
     }
@@ -119,10 +137,84 @@ export default function TontineDetailScreen() {
   const getFrequencyLabel = (freq: TontineFrequency): string => {
     const map: Record<string, string> = {
       HEBDOMADAIRE: 'Hebdomadaire',
+      'BI-HEBDOMADAIRE': 'Bi-hebdomadaire',
       MENSUELLE: 'Mensuelle',
+      BIMENSUELLE: 'Bimensuelle',
       TRIMESTRIELLE: 'Trimestrielle',
+      SEMESTRIELLE: 'Semestrielle',
+      ANNUELLE: 'Annuelle',
     };
     return map[freq] || freq;
+  };
+
+  const getJoinAmount = () => {
+    const parsedMultiplier = Number(multiplier.replace(',', '.')) || 1;
+    return (tontine?.montantCotisation || 0) * parsedMultiplier;
+  };
+
+  const getSubscriptionAmount = (subscription: SubscriptionResponse) =>
+    (tontine?.montantCotisation || 0) * Number(subscription.multiplier || 1);
+
+  const goToContributionPayment = (subscription: SubscriptionResponse) => {
+    if (!tontine) return;
+    router.push({
+      pathname: '/payment/create',
+      params: {
+        type: 'TONTINE',
+        amount: String(getSubscriptionAmount(subscription)),
+        relatedEntityId: subscription.id,
+        label: `${tontine.denomination} - ${subscription.subscriptionName}`,
+      },
+    } as any);
+  };
+
+  const handleJoin = async () => {
+    if (!tontine) return;
+    if (currentSubscription) {
+      goToContributionPayment(currentSubscription);
+      return;
+    }
+    const parsedMultiplier = Number(multiplier.replace(',', '.'));
+    if (!parsedMultiplier || parsedMultiplier < 0.5 || parsedMultiplier > 10) {
+      Alert.alert('Part invalide', 'La part doit être comprise entre 0.5 et 10.');
+      return;
+    }
+
+    setJoining(true);
+    try {
+      const response = await subscribeToTontine(tontine.id, {
+        subscriptionName: subscriptionName.trim() || undefined,
+        multiplier: parsedMultiplier,
+      });
+
+      if (response.success && response.data) {
+        setCurrentSubscription(response.data);
+        Alert.alert(
+          'Adhésion enregistrée',
+          'Votre souscription est créée. Vous pouvez maintenant régler la première cotisation.',
+          [
+            { text: 'Plus tard', style: 'cancel', onPress: loadTontine },
+            {
+              text: 'Payer maintenant',
+              onPress: () =>
+                router.push({
+                  pathname: '/payment/create',
+                  params: {
+                    type: 'TONTINE',
+                    amount: String(getJoinAmount()),
+                    relatedEntityId: response.data.id,
+                    label: tontine.denomination,
+                  },
+                } as any),
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      showErrorAlert(error, 'Adhésion Tontine');
+    } finally {
+      setJoining(false);
+    }
   };
 
   if (loading) return <LoadingScreen message="Chargement des détails..." />;
@@ -222,8 +314,107 @@ export default function TontineDetailScreen() {
           </View>
         </AnimatedCard>
 
-        {/* Infos détaillées */}
-        <AnimatedCard index={1} variant="elevated">
+        {/* Adhésion / Paiement */}
+        <AnimatedCard index={1} variant="elevated" style={styles.joinCard}>
+          {currentSubscription ? (
+            <>
+              <View style={styles.joinHeader}>
+                <View style={styles.joinIcon}>
+                  <CheckCircle size={20} color={COLORS.success} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>Souscription active</Text>
+                  <Text style={styles.joinSubtitle}>
+                    Vous êtes déjà inscrit à cette tontine. Vous pouvez payer votre cotisation.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.subscriptionBox}>
+                <Text style={styles.inputLabel}>Souscription</Text>
+                <Text style={styles.subscriptionName}>{currentSubscription.subscriptionName}</Text>
+                <Text style={styles.subscriptionMeta}>
+                  Part x{Number(currentSubscription.multiplier || 1)}
+                </Text>
+              </View>
+
+              <View style={styles.joinAmountRow}>
+                <View>
+                  <Text style={styles.collectLabel}>Cotisation à payer</Text>
+                  <Text style={styles.joinAmount}>
+                    {formatCurrency(getSubscriptionAmount(currentSubscription))}
+                  </Text>
+                </View>
+                <CreditCard size={22} color={COLORS.success} />
+              </View>
+
+              <GradientButton
+                title="Payer la cotisation"
+                onPress={() => goToContributionPayment(currentSubscription)}
+                variant="success"
+                size="lg"
+                icon={<CreditCard size={20} color={COLORS.white} />}
+              />
+            </>
+          ) : (
+            <>
+              <View style={styles.joinHeader}>
+                <View style={styles.joinIcon}>
+                  <UserPlus size={20} color={COLORS.success} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>Adhésion à la tontine</Text>
+                  <Text style={styles.joinSubtitle}>
+                    Choisissez votre part, puis finalisez le paiement.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Nom de souscription</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={subscriptionName}
+                  onChangeText={setSubscriptionName}
+                  placeholder="Ex: Wulfrid-1"
+                  placeholderTextColor={COLORS.gray400}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Part / multiplicateur</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={multiplier}
+                  onChangeText={setMultiplier}
+                  keyboardType="decimal-pad"
+                  placeholder="1"
+                  placeholderTextColor={COLORS.gray400}
+                />
+              </View>
+
+              <View style={styles.joinAmountRow}>
+                <View>
+                  <Text style={styles.collectLabel}>Première cotisation</Text>
+                  <Text style={styles.joinAmount}>{formatCurrency(getJoinAmount())}</Text>
+                </View>
+                <CreditCard size={22} color={COLORS.success} />
+              </View>
+
+              <GradientButton
+                title={tontine.isLocked ? 'Tontine verrouillée' : 'Adhérer et payer'}
+                onPress={handleJoin}
+                disabled={tontine.isLocked}
+                loading={joining}
+                variant="success"
+                size="lg"
+                icon={<UserPlus size={20} color={COLORS.white} />}
+              />
+            </>
+          )}
+        </AnimatedCard>
+
+        <AnimatedCard index={2} variant="elevated">
           <Text style={styles.sectionTitle}>Informations</Text>
 
           <View style={styles.infoGrid}>
@@ -266,7 +457,7 @@ export default function TontineDetailScreen() {
         </AnimatedCard>
 
         {/* Dates */}
-        <AnimatedCard index={2} variant="elevated">
+        <AnimatedCard index={3} variant="elevated">
           <Text style={styles.sectionTitle}>Calendrier</Text>
 
           <View style={styles.dateRow}>
@@ -289,7 +480,7 @@ export default function TontineDetailScreen() {
         </AnimatedCard>
 
         {/* Sanctions */}
-        <AnimatedCard index={3} variant="elevated">
+        <AnimatedCard index={4} variant="elevated">
           <Text style={styles.sectionTitle}>Sanctions</Text>
 
           <View style={styles.sanctionRow}>
@@ -381,8 +572,6 @@ const styles = StyleSheet.create({
   },
   // Collecte
   collectCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.success,
   },
   collectHeader: {
     flexDirection: 'row',
@@ -433,6 +622,78 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.gray800,
     marginBottom: SPACING.md,
+  },
+  joinCard: {
+  },
+  joinHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  joinIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.successLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  joinSubtitle: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.gray500,
+    marginTop: -SPACING.sm,
+  },
+  inputGroup: {
+    marginBottom: SPACING.md,
+  },
+  inputLabel: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.gray500,
+    fontWeight: FONT_WEIGHT.bold,
+    marginBottom: SPACING.xs,
+    textTransform: 'uppercase',
+  },
+  textInput: {
+    height: 50,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray50,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    paddingHorizontal: SPACING.md,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.gray800,
+  },
+  subscriptionBox: {
+    backgroundColor: COLORS.gray50,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  subscriptionName: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.gray800,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  subscriptionMeta: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.gray500,
+    marginTop: 2,
+  },
+  joinAmountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.successLight,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  joinAmount: {
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.success,
+    fontWeight: FONT_WEIGHT.extrabold,
+    marginTop: 2,
   },
   // Info grid
   infoGrid: {

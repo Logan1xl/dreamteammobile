@@ -41,6 +41,7 @@ import {
   FONT_WEIGHT,
   SHADOWS,
 } from '../../src/theme/theme';
+import { showErrorAlert } from '../../src/utils/errorUtils';
 
 /** Labels lisibles pour les types de paiement */
 const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
@@ -95,7 +96,7 @@ export default function PaymentsScreen() {
           return;
         }
       } catch (e) {
-        console.log('Erreur profil membre:', e);
+        showErrorAlert(e, 'Mon Profil');
         setLoading(false);
         return;
       }
@@ -107,7 +108,7 @@ export default function PaymentsScreen() {
         setPayments(response.data.content || []);
       }
     } catch (error) {
-      console.log('Erreur chargement paiements:', error);
+      showErrorAlert(error, 'Mes Paiements');
     } finally {
       setLoading(false);
     }
@@ -200,7 +201,11 @@ export default function PaymentsScreen() {
           />
         ) : (
           payments.map((payment, index) => {
-            const modeInfo = getPaymentModeInfo(payment.modePaiement);
+            const paymentMode = payment.modePaiement || payment.mode || 'AUTRE';
+            const paymentType = payment.typePaiement || payment.type || 'AUTRE';
+            const paymentDate = payment.paymentDate || payment.dateCreation || payment.createdAt || '';
+            const paymentAmount = payment.montant ?? payment.amount ?? 0;
+            const modeInfo = getPaymentModeInfo(paymentMode);
 
             return (
               <AnimatedCard key={payment.id} index={index + 1} variant="default">
@@ -216,10 +221,10 @@ export default function PaymentsScreen() {
                     </View>
                     <View style={styles.paymentTypeTexts}>
                       <Text style={styles.paymentType}>
-                        {PAYMENT_TYPE_LABELS[payment.typePaiement] || payment.typePaiement}
+                        {PAYMENT_TYPE_LABELS[paymentType] || paymentType}
                       </Text>
                       <Text style={styles.paymentDate}>
-                        {formatDate(payment.paymentDate || payment.createdAt)}
+                        {formatDate(paymentDate)}
                       </Text>
                     </View>
                   </View>
@@ -230,20 +235,20 @@ export default function PaymentsScreen() {
                   <View style={styles.paymentDetailRow}>
                     <Text style={styles.detailLabel}>Montant</Text>
                     <Text style={styles.detailAmount}>
-                      {formatCurrency(payment.montant)}
+                      {formatCurrency(paymentAmount)}
                     </Text>
                   </View>
                   <View style={styles.paymentDetailRow}>
                     <Text style={styles.detailLabel}>Mode</Text>
                     <View style={styles.modeTag}>
-                      {payment.modePaiement === 'ORANGE_MONEY' && (
+                      {paymentMode === 'ORANGE_MONEY' && (
                         <Image
                           source={require('../../assets/images/Orange_Money-Logo.wine.png')}
                           style={styles.modeLogo}
                           resizeMode="contain"
                         />
                       )}
-                      {payment.modePaiement === 'MTN_MOMO' && (
+                      {paymentMode === 'MTN_MOMO' && (
                         <Image
                           source={require('../../assets/images/logo_mtn_money.png')}
                           style={styles.modeLogo}
@@ -300,8 +305,6 @@ const styles = StyleSheet.create({
   },
   // Nouveau paiement
   newPaymentCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
   },
   newPaymentRow: {
     flexDirection: 'row',
